@@ -29,6 +29,14 @@
                     <!-- Pending users will be listed here -->
                 </div>
             </div>
+
+            <div class="bg-white rounded-lg shadow p-6 mt-6">
+                <h2 class="text-xl font-bold mb-4">Pending Deposits</h2>
+                <button onclick="loadPendingDeposits()" class="bg-blue-800 text-white px-4 py-2 rounded mb-4">Refresh</button>
+                <div id="pending-deposits-list" class="space-y-4">
+                    <!-- Pending deposits will be listed here -->
+                </div>
+            </div>
         </main>
     </div>
 
@@ -104,8 +112,83 @@
             });
         }
 
+        function loadPendingDeposits() {
+            fetch('/api/admin/pending-deposits')
+            .then(response => response.json())
+            .then(data => {
+                const list = document.getElementById('pending-deposits-list');
+                list.innerHTML = '';
+
+                const deposits = data.deposits || [];
+                if (deposits.length === 0) {
+                    list.innerHTML = '<p class="text-gray-500">No pending deposits.</p>';
+                    return;
+                }
+
+                deposits.forEach(deposit => {
+                    const depositDiv = document.createElement('div');
+                    depositDiv.className = 'border p-4 rounded flex justify-between items-center gap-4';
+                    depositDiv.innerHTML = `
+                        <div>
+                            <p><strong>User:</strong> ${deposit.user_name} (${deposit.user_email})</p>
+                            <p><strong>Plan:</strong> ${deposit.plan_name}</p>
+                            <p><strong>Amount:</strong> GH₵ ${Number(deposit.amount || 0).toFixed(2)}</p>
+                            <p><strong>Provider:</strong> ${deposit.payment_provider || 'Manual'}</p>
+                            <p><strong>Reference:</strong> ${deposit.payment_reference || '-'}</p>
+                        </div>
+                        <div class="shrink-0">
+                            <button onclick="approveDeposit(${deposit.id})" class="bg-blue-800 text-white px-4 py-2 rounded mr-2">Approve</button>
+                            <button onclick="rejectDeposit(${deposit.id})" class="bg-red-600 text-white px-4 py-2 rounded">Reject</button>
+                        </div>
+                    `;
+                    list.appendChild(depositDiv);
+                });
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                document.getElementById('pending-deposits-list').innerHTML = '<p class="text-red-500">Failed to load pending deposits.</p>';
+            });
+        }
+
+        function approveDeposit(id) {
+            fetch(`/api/admin/approve-deposit/${id}`, { method: 'POST' })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert('Deposit approved. Growth starts now.');
+                    loadPendingDeposits();
+                } else {
+                    alert(data.message || 'Error approving deposit');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Approval failed. Ensure server is running.');
+            });
+        }
+
+        function rejectDeposit(id) {
+            fetch(`/api/admin/reject-deposit/${id}`, { method: 'POST' })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert('Deposit rejected.');
+                    loadPendingDeposits();
+                } else {
+                    alert(data.message || 'Error rejecting deposit');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Rejection failed. Ensure server is running.');
+            });
+        }
+
         // Load on page load
-        document.addEventListener('DOMContentLoaded', loadPendingUsers);
+        document.addEventListener('DOMContentLoaded', () => {
+            loadPendingUsers();
+            loadPendingDeposits();
+        });
     </script>
 </body>
 </html>

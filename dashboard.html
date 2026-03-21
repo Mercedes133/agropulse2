@@ -81,16 +81,28 @@
                             <label for="amount" class="block text-sm text-slate-600 mb-1">Amount (GH₵)</label>
                             <input id="amount" type="number" min="1" step="0.01" placeholder="Enter deposit amount" class="w-full border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-200">
                         </div>
+                        <div>
+                            <label for="payment-provider" class="block text-sm text-slate-600 mb-1">Payment Method</label>
+                            <select id="payment-provider" class="w-full border border-slate-300 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-blue-200">
+                                <option value="MTN">MTN</option>
+                                <option value="Telecel">Telecel</option>
+                                <option value="AirtelTigo">AirtelTigo</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="payment-reference" class="block text-sm text-slate-600 mb-1">Payment Reference (optional)</label>
+                            <input id="payment-reference" type="text" placeholder="Transaction/reference ID" class="w-full border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-200">
+                        </div>
                         <div class="bg-blue-50 border border-blue-100 rounded-lg p-3">
                             <p class="text-xs text-blue-700 uppercase">Expected Return</p>
                             <p id="expected-return" class="text-lg font-bold text-blue-900">GH₵ 0.00</p>
-                            <p id="expected-return-note" class="text-xs text-blue-700">3x in 1 week</p>
+                            <p id="expected-return-note" class="text-xs text-blue-700">7x in 7 days</p>
                         </div>
                         <p id="deposit-message" class="hidden text-sm"></p>
                         <button type="submit" class="w-full bg-blue-800 hover:bg-blue-900 text-white font-semibold py-2 rounded-lg transition">Deposit Now</button>
                     </form>
-                    <a href="https://wa.me/233591941508" target="_blank" rel="noopener noreferrer" class="mt-5 inline-flex items-center text-green-600 hover:text-green-700 font-semibold">
-                        <i class="fa-brands fa-whatsapp mr-2"></i>Contact Support
+                    <a href="mailto:agropulse1@gmail.com" class="mt-5 inline-flex items-center text-blue-600 hover:text-blue-700 font-semibold">
+                        <i class="fa-solid fa-envelope mr-2"></i>Contact Support
                     </a>
                 </aside>
             </section>
@@ -101,6 +113,74 @@
                     <p class="text-slate-500">No deposits yet.</p>
                 </div>
             </section>
+
+            <section class="bg-gradient-to-br from-green-50 to-emerald-50 border border-green-200 rounded-2xl p-6 shadow-sm">
+                <div class="flex items-start justify-between mb-4">
+                    <div>
+                        <h2 class="text-xl font-bold text-slate-900">Referral Program</h2>
+                        <p class="text-sm text-slate-600 mt-1">Invite friends & earn bonus rewards</p>
+                    </div>
+                    <div id="bonus-badge" class="hidden bg-green-600 text-white rounded-full px-4 py-2 text-sm font-bold">
+                        ✓ Bonus Unlocked!
+                    </div>
+                </div>
+                
+                <div class="grid md:grid-cols-2 gap-4">
+                    <div class="bg-white rounded-xl p-4 border border-green-200">
+                        <p class="text-xs text-slate-500 uppercase mb-2">Your Referral Code</p>
+                        <div class="flex items-center gap-2">
+                            <input 
+                                id="referral-code-input" 
+                                type="text" 
+                                readonly 
+                                value="Loading..." 
+                                class="flex-1 px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-sm font-mono font-bold text-slate-900"
+                            >
+                            <button 
+                                id="copy-referral-btn"
+                                class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-semibold transition text-sm"
+                                title="Copy referral code to clipboard"
+                            >
+                                <i class="fa-regular fa-copy mr-1"></i>Copy Code
+                            </button>
+                        </div>
+                        <p class="text-xs text-slate-600 mt-2">Share this code with friends to earn rewards</p>
+                        <div class="mt-3">
+                            <p class="text-xs text-slate-500 uppercase mb-2">Shareable Referral Link</p>
+                            <div class="flex items-center gap-2">
+                                <input
+                                    id="referral-link-input"
+                                    type="text"
+                                    readonly
+                                    value="Loading..."
+                                    class="flex-1 px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs text-slate-700"
+                                >
+                                <button
+                                    id="copy-referral-link-btn"
+                                    class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-semibold transition text-sm"
+                                    title="Copy referral link"
+                                >
+                                    <i class="fa-regular fa-copy mr-1"></i>Copy Link
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="bg-white rounded-xl p-4 border border-green-200">
+                        <p class="text-xs text-slate-500 uppercase mb-2">Referral Progress</p>
+                        <div class="mb-3">
+                            <div class="flex justify-between items-center mb-1">
+                                <p class="text-lg font-bold text-slate-900"><span id="referral-count">0</span>/7</p>
+                                <p class="text-sm text-slate-600" id="referral-bonus-text">GH₵50 bonus at 7 friends</p>
+                            </div>
+                            <div class="w-full bg-slate-200 rounded-full h-2">
+                                <div id="referral-progress-bar" class="bg-green-600 h-2 rounded-full transition-all" style="width: 0%"></div>
+                            </div>
+                        </div>
+                        <p class="text-xs text-slate-600"><span id="referral-remaining">7</span> more friends needed to unlock bonus</p>
+                    </div>
+                </div>
+            </section>
         </div>
     </main>
 
@@ -109,7 +189,8 @@
             user: null,
             plans: [],
             selectedPlan: null,
-            deposits: []
+            deposits: [],
+            referrals: null
         };
 
         function formatCurrency(value) {
@@ -129,17 +210,24 @@
 
             if (!plan || amount <= 0) {
                 document.getElementById('expected-return').textContent = formatCurrency(0);
-                document.getElementById('expected-return-note').textContent = '3x in 1 week';
+                document.getElementById('expected-return-note').textContent = '7x in 7 days';
                 return;
             }
 
-            const payoutMultiplier = Number(plan.payoutMultiplier || 3);
+            const payoutMultiplier = Number(plan.payoutMultiplier || 7);
             const payoutDays = Number(plan.payoutDays || 7);
             const expected = amount * payoutMultiplier;
 
             document.getElementById('expected-return').textContent = formatCurrency(expected);
             document.getElementById('expected-return-note').textContent = `${payoutMultiplier}x in ${payoutDays} days`;
         }
+
+        const PLAN_IMAGES = {
+            'poultry-starter': 'https://images.unsplash.com/photo-1548550023-2bdb3c5beed7?auto=format&fit=crop&w=600&q=80',
+            'boer-goat': 'https://images.unsplash.com/photo-1524024973431-2ad916746881?auto=format&fit=crop&w=600&q=80',
+            'eggs': 'https://images.unsplash.com/photo-1518569656558-1f25e69d93d7?auto=format&fit=crop&w=600&q=80',
+            'dairy-cow': 'https://images.unsplash.com/photo-1570042225831-d98fa7577f1e?auto=format&fit=crop&w=600&q=80'
+        };
 
         function renderPlans() {
             const grid = document.getElementById('plans-grid');
@@ -149,20 +237,35 @@
             }
 
             grid.innerHTML = appState.plans.map((plan) => {
-                const selectedClass = appState.selectedPlan && appState.selectedPlan.id === plan.id
-                    ? 'border-blue-700 ring-2 ring-blue-100'
-                    : 'border-slate-200';
+                const isSelected = appState.selectedPlan && appState.selectedPlan.id === plan.id;
+                const selectedClass = isSelected
+                    ? 'border-blue-700 ring-2 ring-blue-200 shadow-md'
+                    : 'border-slate-200 hover:border-blue-400';
+                const img = PLAN_IMAGES[plan.id] || '';
+                const minReturn = Math.round(plan.minDeposit * plan.payoutMultiplier);
 
                 return `
                     <button
                         type="button"
                         data-plan-id="${plan.id}"
-                        class="plan-btn text-left rounded-xl border ${selectedClass} p-4 hover:border-blue-400 transition"
+                        class="plan-btn text-left rounded-xl border ${selectedClass} overflow-hidden transition"
                     >
-                        <p class="text-xs uppercase text-slate-500">${plan.id.replace('-', ' ')}</p>
-                        <h3 class="text-lg font-bold text-slate-900 mt-1">${plan.name}</h3>
-                        <p class="text-sm text-slate-600 mt-1">Minimum deposit: ${formatCurrency(plan.minDeposit)}</p>
-                        <p class="text-sm text-green-600 font-semibold mt-2">Return: ${plan.payoutMultiplier}x in ${plan.payoutDays} days</p>
+                        <img src="${img}" alt="${plan.name}" class="w-full h-32 object-cover">
+                        <div class="p-4">
+                            <h3 class="text-base font-bold text-slate-900">${plan.name}</h3>
+                            <div class="mt-2 flex justify-between items-center bg-slate-50 rounded-lg px-3 py-2">
+                                <div>
+                                    <p class="text-xs text-slate-500">Min. Invest</p>
+                                    <p class="text-sm font-bold text-slate-800">${formatCurrency(plan.minDeposit)}</p>
+                                </div>
+                                <div class="text-right">
+                                    <p class="text-xs text-slate-500">Min. Return</p>
+                                    <p class="text-sm font-bold text-green-600">${formatCurrency(minReturn)}</p>
+                                </div>
+                            </div>
+                            <p class="text-xs text-green-700 font-semibold mt-2">${plan.payoutMultiplier}x return in ${plan.payoutDays} days</p>
+                            ${isSelected ? '<p class="text-xs text-blue-700 font-bold mt-1">✓ Selected</p>' : ''}
+                        </div>
                     </button>
                 `;
             }).join('');
@@ -190,12 +293,24 @@
 
             list.innerHTML = appState.deposits.map((deposit) => {
                 const dateText = new Date(deposit.created_at).toLocaleString();
+                const status = String(deposit.status || 'pending').toLowerCase();
+                const statusClass = status === 'approved'
+                    ? 'text-green-700 bg-green-50 border-green-200'
+                    : status === 'rejected'
+                        ? 'text-red-700 bg-red-50 border-red-200'
+                        : 'text-amber-700 bg-amber-50 border-amber-200';
+                const statusLabel = status.charAt(0).toUpperCase() + status.slice(1);
+                const valueText = status === 'approved'
+                    ? `Current value: ${formatCurrency(deposit.current_value || deposit.amount)} • Day ${deposit.elapsed_days || 0}/${deposit.payout_days || 7}`
+                    : 'Awaiting admin payment confirmation';
                 return `
                     <div class="border border-slate-100 rounded-lg p-4 flex items-start justify-between gap-4">
                         <div>
                             <p class="font-semibold text-slate-900">${deposit.plan_name}</p>
                             <p class="text-sm text-slate-500">${dateText}</p>
-                            <p class="text-xs text-green-700">Expected payout: ${formatCurrency(deposit.projected_payout || (Number(deposit.amount || 0) * 3))}</p>
+                            <p class="text-xs text-green-700">Expected payout: ${formatCurrency(deposit.projected_payout || (Number(deposit.amount || 0) * 7))}</p>
+                            <p class="text-xs text-slate-600 mt-1">${valueText}</p>
+                            <p class="inline-flex mt-2 text-xs border rounded-full px-2 py-1 ${statusClass}">${statusLabel}</p>
                         </div>
                         <p class="font-bold text-blue-800">${formatCurrency(deposit.amount)}</p>
                     </div>
@@ -239,14 +354,54 @@
             appState.deposits = data.deposits || [];
         }
 
+        async function loadReferrals() {
+            try {
+                const response = await fetch('/api/referrals');
+                const data = await response.json();
+                if (data.success) {
+                    appState.referrals = data.referral;
+                }
+            } catch (error) {
+                console.error('Error loading referrals:', error);
+            }
+        }
+
+        function renderReferralWidget() {
+            if (!appState.referrals) {
+                return;
+            }
+
+            const { referralCode, totalReferrals, target, bonusUnlocked, bonusAmount } = appState.referrals;
+            const remaining = Math.max(0, target - totalReferrals);
+            const percentage = Math.round((totalReferrals / target) * 100);
+            const safeCode = referralCode || '';
+            const referralLink = safeCode ? `${window.location.origin}/signup?ref=${encodeURIComponent(safeCode)}` : 'N/A';
+
+            document.getElementById('referral-code-input').value = safeCode || 'N/A';
+            document.getElementById('referral-link-input').value = referralLink;
+            document.getElementById('referral-count').textContent = totalReferrals;
+            document.getElementById('referral-remaining').textContent = remaining;
+            document.getElementById('referral-bonus-text').textContent = `GH₵${bonusAmount} bonus at ${target} friends`;
+            document.getElementById('referral-progress-bar').style.width = `${percentage}%`;
+
+            const badgeEl = document.getElementById('bonus-badge');
+            if (bonusUnlocked) {
+                badgeEl.classList.remove('hidden');
+            } else {
+                badgeEl.classList.add('hidden');
+            }
+        }
+
         async function refreshDashboard() {
             try {
                 await loadProfile();
                 await loadPlans();
                 await loadDeposits();
+                await loadReferrals();
                 renderPlans();
                 renderHistory();
                 renderSummary();
+                renderReferralWidget();
             } catch (error) {
                 window.location.href = '/login';
             }
@@ -271,7 +426,12 @@
                 const response = await fetch('/api/deposit', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ planId: appState.selectedPlan.id, amount })
+                    body: JSON.stringify({
+                        planId: appState.selectedPlan.id,
+                        amount,
+                        paymentProvider: document.getElementById('payment-provider').value,
+                        paymentReference: document.getElementById('payment-reference').value.trim()
+                    })
                 });
 
                 const data = await response.json();
@@ -280,8 +440,9 @@
                     return;
                 }
 
-                showDepositMessage(`Deposit successful: ${formatCurrency(data.deposit.amount)} to ${data.deposit.planName}. Expected payout ${formatCurrency(data.deposit.projectedPayout)} in ${data.deposit.payoutDays} days.`, true);
+                showDepositMessage(`Deposit submitted: ${formatCurrency(data.deposit.amount)} to ${data.deposit.planName}. It will reflect after admin confirms payment.`, true);
                 document.getElementById('amount').value = '';
+                document.getElementById('payment-reference').value = '';
                 await refreshDashboard();
             } catch (error) {
                 showDepositMessage('Deposit failed. Please try again.', false);
@@ -289,6 +450,46 @@
         });
 
         document.getElementById('amount').addEventListener('input', updateExpectedReturnPreview);
+
+        document.getElementById('copy-referral-btn').addEventListener('click', () => {
+            const input = document.getElementById('referral-code-input');
+            const code = input.value;
+            
+            if (code && code !== 'N/A' && code !== 'Loading...') {
+                navigator.clipboard.writeText(code).then(() => {
+                    const btn = document.getElementById('copy-referral-btn');
+                    const originalText = btn.innerHTML;
+                    btn.innerHTML = '<i class="fa-solid fa-check mr-1"></i>Copied!';
+                    btn.classList.add('bg-green-700');
+                    window.setTimeout(() => {
+                        btn.innerHTML = originalText;
+                        btn.classList.remove('bg-green-700');
+                    }, 2000);
+                }).catch(() => {
+                    alert('Failed to copy. Please try again.');
+                });
+            }
+        });
+
+        document.getElementById('copy-referral-link-btn').addEventListener('click', () => {
+            const input = document.getElementById('referral-link-input');
+            const link = input.value;
+
+            if (link && link !== 'N/A' && link !== 'Loading...') {
+                navigator.clipboard.writeText(link).then(() => {
+                    const btn = document.getElementById('copy-referral-link-btn');
+                    const originalText = btn.innerHTML;
+                    btn.innerHTML = '<i class="fa-solid fa-check mr-1"></i>Copied!';
+                    btn.classList.add('bg-blue-700');
+                    window.setTimeout(() => {
+                        btn.innerHTML = originalText;
+                        btn.classList.remove('bg-blue-700');
+                    }, 2000);
+                }).catch(() => {
+                    alert('Failed to copy link. Please try again.');
+                });
+            }
+        });
 
         document.getElementById('logout-btn').addEventListener('click', async () => {
             try {
