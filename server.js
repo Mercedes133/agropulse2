@@ -385,6 +385,22 @@ async function sendSignupOtpEmail({ email, name, otpCode }) {
   });
 }
 
+async function sendWelcomeEmail({ email, name }) {
+  const transporter = getEmailTransporter();
+  if (!transporter) {
+    return;
+  }
+
+  const fromEmail = process.env.FROM_EMAIL || process.env.SMTP_USER;
+  await transporter.sendMail({
+    from: fromEmail,
+    to: email,
+    subject: 'Welcome to Agro Pluse',
+    text: `Welcome ${name}! Your Agro Pluse account has been created successfully. You can now log in and start investing.`,
+    html: `<p>Welcome <strong>${name}</strong>!</p><p>Your Agro Pluse account has been created successfully.</p><p>You can now log in and start investing.</p>`
+  });
+}
+
 function normalizeEmail(email) {
   return String(email || '').trim().toLowerCase();
 }
@@ -460,6 +476,10 @@ function createUserAccount({ name, email, phone, hashedPassword, referrerId }, r
               referralCode: ownReferralCode,
               referredBy: referrerId || null
             }
+          });
+
+          sendWelcomeEmail({ email, name }).catch((mailErr) => {
+            console.error('Welcome email error:', mailErr);
           });
         }
       );
