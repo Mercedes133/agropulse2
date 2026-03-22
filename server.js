@@ -10,6 +10,8 @@ const nodemailer = require('nodemailer');
 const app = express();
 const PORT = process.env.PORT || 3000;
 const DATABASE_PATH = process.env.DATABASE_PATH || './users.db';
+const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'change_me_admin_password';
 const REFERRAL_TARGET = 7;
 const REFERRAL_BONUS_AMOUNT = 50;
 const OTP_EXPIRY_MS = 10 * 60 * 1000;
@@ -38,6 +40,22 @@ app.use(session({
     maxAge: 1000 * 60 * 60 * 24 * 7
   }
 }));
+
+app.use((req, res, next) => {
+  const pathName = String(req.path || '').toLowerCase();
+  const isAdminPage = pathName === '/admin' || pathName === '/admin.html';
+  const isAdminApi = pathName.startsWith('/api/admin')
+    || pathName === '/api/pending'
+    || pathName.startsWith('/api/approve/')
+    || pathName.startsWith('/api/reject/');
+
+  if (isAdminPage || isAdminApi) {
+    return requireAdminAccess(req, res, next);
+  }
+
+  next();
+});
+
 app.use(express.static(path.join(__dirname)));
 
 // Database setup
@@ -375,6 +393,52 @@ function requireAuth(req, res, next) {
   next();
 }
 
+function parseBasicAuthorization(headerValue) {
+  const raw = String(headerValue || '');
+  if (!raw.startsWith('Basic ')) {
+    return null;
+  }
+
+  const encoded = raw.slice(6).trim();
+  if (!encoded) {
+    return null;
+  }
+
+  try {
+    const decoded = Buffer.from(encoded, 'base64').toString('utf8');
+    const separatorIndex = decoded.indexOf(':');
+    if (separatorIndex === -1) {
+      return null;
+    }
+
+    return {
+      username: decoded.slice(0, separatorIndex),
+      password: decoded.slice(separatorIndex + 1)
+    };
+  } catch (error) {
+    return null;
+  }
+}
+
+function requireAdminAccess(req, res, next) {
+  const credentials = parseBasicAuthorization(req.headers.authorization);
+  const valid = credentials
+    && credentials.username === ADMIN_USERNAME
+    && credentials.password === ADMIN_PASSWORD;
+
+  if (valid) {
+    return next();
+  }
+
+  res.setHeader('WWW-Authenticate', 'Basic realm="Agro Pluse Admin"');
+  const wantsJson = String(req.path || '').toLowerCase().startsWith('/api/');
+  if (wantsJson) {
+    return res.status(401).json({ success: false, message: 'Admin authentication required' });
+  }
+
+  return res.status(401).send('Admin authentication required.');
+}
+
 function getEmailTransporter() {
   const host = process.env.SMTP_HOST;
   const port = Number(process.env.SMTP_PORT || 587);
@@ -427,6 +491,36 @@ async function sendWelcomeEmail({ email, name }) {
     subject: 'Welcome to Agro Pluse',
     text: `Welcome ${name}! Your Agro Pluse account has been created successfully. You can now log in and start investing.`,
     html: `<p>Welcome <strong>${name}</strong>!</p><p>Your Agro Pluse account has been created successfully.</p><p>You can now log in and start investing.</p>`
+  });
+}
+
+async function sendDepositStatusEmail({ email, name, status, amount, planName, reference }) {
+  const transporter = getEmailTransporter();
+  if (!transporter) {
+    return;
+  }
+
+  const approved = String(status || '').toLowerCase() === 'approved';
+  const fromEmail = process.env.FROM_EMAIL || process.env.SMTP_USER;
+  const formattedAmount = `GH₵ ${Number(amount || 0).toFixed(2)}`;
+  const subject = approved
+    ? 'Deposit Approved - Agro Pluse'
+    : 'Deposit Update - Agro Pluse';
+
+  const text = approved
+    ? `Hello ${name}, your deposit for ${planName} (${formattedAmount}) has been approved and is now active. Reference: ${reference || 'N/A'}.`
+    : `Hello ${name}, your deposit for ${planName} (${formattedAmount}) was not approved. Reference: ${reference || 'N/A'}. Please contact support for assistance.`;
+
+  const html = approved
+    ? `<p>Hello ${name},</p><p>Your deposit for <strong>${planName}</strong> (${formattedAmount}) has been <strong>approved</strong> and is now active.</p><p>Reference: <strong>${reference || 'N/A'}</strong></p>`
+    : `<p>Hello ${name},</p><p>Your deposit for <strong>${planName}</strong> (${formattedAmount}) was <strong>not approved</strong>.</p><p>Reference: <strong>${reference || 'N/A'}</strong></p><p>Please contact support for assistance.</p>`;
+
+  await transporter.sendMail({
+    from: fromEmail,
+    to: email,
+    subject,
+    text,
+    html
   });
 }
 
@@ -961,6 +1055,33 @@ app.post('/api/admin/approve-deposit/:id', (req, res) => {
       }
 
       res.json({ success: true, message: 'Deposit approved successfully' });
+
+      db.get(
+        `SELECT d.amount, d.plan_name, d.payment_reference, u.email AS user_email, u.name AS user_name
+         FROM deposits d
+         INNER JOIN users u ON u.id = d.user_id
+         WHERE d.id = ?`,
+        [depositId],
+        (rowErr, row) => {
+          if (rowErr || !row) {
+            if (rowErr) {
+              console.error('Error loading approved deposit email details:', rowErr);
+            }
+            return;
+          }
+
+          sendDepositStatusEmail({
+            email: row.user_email,
+            name: row.user_name,
+            status: 'approved',
+            amount: row.amount,
+            planName: row.plan_name,
+            reference: row.payment_reference
+          }).catch((mailErr) => {
+            console.error('Approved deposit email error:', mailErr);
+          });
+        }
+      );
     }
   );
 });
@@ -987,6 +1108,33 @@ app.post('/api/admin/reject-deposit/:id', (req, res) => {
       }
 
       res.json({ success: true, message: 'Deposit rejected' });
+
+      db.get(
+        `SELECT d.amount, d.plan_name, d.payment_reference, u.email AS user_email, u.name AS user_name
+         FROM deposits d
+         INNER JOIN users u ON u.id = d.user_id
+         WHERE d.id = ?`,
+        [depositId],
+        (rowErr, row) => {
+          if (rowErr || !row) {
+            if (rowErr) {
+              console.error('Error loading rejected deposit email details:', rowErr);
+            }
+            return;
+          }
+
+          sendDepositStatusEmail({
+            email: row.user_email,
+            name: row.user_name,
+            status: 'rejected',
+            amount: row.amount,
+            planName: row.plan_name,
+            reference: row.payment_reference
+          }).catch((mailErr) => {
+            console.error('Rejected deposit email error:', mailErr);
+          });
+        }
+      );
     }
   );
 });

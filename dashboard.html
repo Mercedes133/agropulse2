@@ -72,6 +72,14 @@
 
                 <aside class="bg-white border border-slate-100 rounded-2xl p-6 shadow-sm">
                     <h2 class="text-xl font-bold text-slate-900 mb-4">Make Deposit</h2>
+                    <div class="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
+                        <p class="text-xs text-amber-700 uppercase font-semibold">How to Pay</p>
+                        <p class="text-sm text-slate-700 mt-1">1) Send payment to the number below. 2) Enter the same sender mobile number. 3) Paste transaction reference and submit.</p>
+                        <p class="text-sm mt-2"><span class="font-semibold">Provider:</span> <span id="pay-provider">MTN</span></p>
+                        <p class="text-sm"><span class="font-semibold">Account Name:</span> <span id="pay-account-name">Agro Pluse</span></p>
+                        <p class="text-sm"><span class="font-semibold">Payment Number:</span> <span id="pay-number">0550000000</span></p>
+                        <p class="text-xs text-amber-700 mt-2">Update these numbers in dashboard settings/code to your real payment numbers.</p>
+                    </div>
                     <form id="deposit-form" class="space-y-4">
                         <div>
                             <label class="block text-sm text-slate-600 mb-1">Plan</label>
@@ -197,6 +205,12 @@
             referrals: null
         };
 
+        const PAYMENT_ACCOUNTS = {
+            MTN: { provider: 'MTN', accountName: 'Agro Pluse', number: '0550000000' },
+            Telecel: { provider: 'Telecel', accountName: 'Agro Pluse', number: '0200000000' },
+            AirtelTigo: { provider: 'AirtelTigo', accountName: 'Agro Pluse', number: '0270000000' }
+        };
+
         function formatCurrency(value) {
             const amount = Number(value || 0);
             return `GH₵ ${amount.toFixed(2)}`;
@@ -224,6 +238,14 @@
 
             document.getElementById('expected-return').textContent = formatCurrency(expected);
             document.getElementById('expected-return-note').textContent = `${payoutMultiplier}x in ${payoutDays} days`;
+        }
+
+        function updatePaymentInstructions() {
+            const provider = document.getElementById('payment-provider').value;
+            const details = PAYMENT_ACCOUNTS[provider] || PAYMENT_ACCOUNTS.MTN;
+            document.getElementById('pay-provider').textContent = details.provider;
+            document.getElementById('pay-account-name').textContent = details.accountName;
+            document.getElementById('pay-number').textContent = details.number;
         }
 
         const PLAN_IMAGES = {
@@ -485,6 +507,7 @@
         });
 
         document.getElementById('amount').addEventListener('input', updateExpectedReturnPreview);
+        document.getElementById('payment-provider').addEventListener('change', updatePaymentInstructions);
 
         document.getElementById('copy-referral-btn').addEventListener('click', () => {
             const input = document.getElementById('referral-code-input');
@@ -541,6 +564,7 @@
         });
 
         refreshDashboard();
+        updatePaymentInstructions();
     </script>
 </body>
 </html>
