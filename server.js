@@ -608,15 +608,16 @@ app.post('/api/signup', (req, res) => {
 
 app.post('/api/login', (req, res) => {
   const { email, password } = req.body;
+  const normalizedEmail = normalizeEmail(email);
   
   // Validate input
-  if (!email || !password) {
+  if (!normalizedEmail || !password) {
     return res.json({ success: false, message: 'Email and password required' });
   }
   
   const hashedPassword = hashPassword(password);
-  db.get(`SELECT * FROM users WHERE email = ? AND password = ? AND status = 'approved'`,
-    [email, hashedPassword], (err, row) => {
+  db.get(`SELECT * FROM users WHERE LOWER(email) = ? AND password = ? AND status = 'approved'`,
+    [normalizedEmail, hashedPassword], (err, row) => {
       if (err) {
         console.error('Login error:', err);
         return res.json({ success: false, message: 'Server error' });

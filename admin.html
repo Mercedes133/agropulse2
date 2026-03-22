@@ -76,7 +76,12 @@
 
         function loadUsersOverview() {
             fetch('/api/admin/users-overview')
-            .then(response => response.json())
+            .then(async (response) => {
+                if (!response.ok) {
+                    throw new Error(`Failed to load users overview (HTTP ${response.status})`);
+                }
+                return response.json();
+            })
             .then(data => {
                 const list = document.getElementById('users-overview-list');
                 list.innerHTML = '';
@@ -115,7 +120,7 @@
             })
             .catch(error => {
                 console.error('Error:', error);
-                document.getElementById('users-overview-list').innerHTML = '<p class="text-red-500">Failed to load users overview.</p>';
+                document.getElementById('users-overview-list').innerHTML = '<p class="text-red-500">Failed to load users overview. Please refresh this page (Ctrl+F5) and try again.</p>';
             });
         }
 
