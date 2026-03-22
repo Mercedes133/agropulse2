@@ -539,6 +539,10 @@ function hashPassword(password) {
   return crypto.createHash('sha256').update(password).digest('hex');
 }
 
+function isStrongPassword(password) {
+  return /^(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/.test(String(password || ''));
+}
+
 // API Routes
 app.post('/api/signup', (req, res) => {
   const { name, email, phone, password, referralCode } = req.body;
@@ -546,6 +550,13 @@ app.post('/api/signup', (req, res) => {
 
   if (!name || !normalizedEmail || !phone || !password) {
     return res.status(400).json({ success: false, message: 'All fields are required' });
+  }
+
+  if (!isStrongPassword(password)) {
+    return res.status(400).json({
+      success: false,
+      message: 'Password must be at least 8 characters and include 1 uppercase letter, 1 number, and 1 symbol.'
+    });
   }
 
   db.get(`SELECT id FROM users WHERE LOWER(email) = ?`, [normalizedEmail], (emailErr, row) => {
