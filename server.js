@@ -541,41 +541,6 @@ function hashPassword(password) {
 
 // API Routes
 app.post('/api/signup', (req, res) => {
-  const { email, otpCode } = req.body;
-  const normalizedEmail = normalizeEmail(email);
-  const cleanOtpCode = String(otpCode || '').trim();
-
-  if (!normalizedEmail || !cleanOtpCode) {
-    return res.status(400).json({ success: false, message: 'Email and OTP are required' });
-  }
-
-  clearExpiredSignupOtps();
-  const pending = pendingSignupOtps.get(normalizedEmail);
-
-  if (!pending) {
-    return res.status(400).json({ success: false, message: 'OTP session not found. Request a new OTP.' });
-  }
-
-  if (pending.expiresAt <= Date.now()) {
-    pendingSignupOtps.delete(normalizedEmail);
-    return res.status(400).json({ success: false, message: 'OTP expired. Request a new OTP.' });
-  }
-
-  if (hashPassword(cleanOtpCode) !== pending.otpHash) {
-    return res.status(400).json({ success: false, message: 'Invalid OTP code' });
-  }
-
-  pendingSignupOtps.delete(normalizedEmail);
-  createUserAccount({
-    name: pending.name,
-    email: pending.email,
-    phone: pending.phone,
-    hashedPassword: pending.hashedPassword,
-    referrerId: pending.referrerId
-  }, req, res);
-});
-
-app.post('/api/signup/request-otp', async (req, res) => {
   const { name, email, phone, password, referralCode } = req.body;
   const normalizedEmail = normalizeEmail(email);
 
@@ -583,13 +548,7 @@ app.post('/api/signup/request-otp', async (req, res) => {
     return res.status(400).json({ success: false, message: 'All fields are required' });
   }
 
-  clearExpiredSignupOtps();
-  const existingEntry = pendingSignupOtps.get(normalizedEmail);
-  if (existingEntry && (Date.now() - existingEntry.requestedAt) < OTP_RESEND_DELAY_MS) {
-    return res.status(429).json({ success: false, message: 'Please wait 60 seconds before requesting a new OTP.' });
-  }
-
-  db.get(`SELECT id FROM users WHERE LOWER(email) = ?`, [normalizedEmail], async (emailErr, row) => {
+  db.get(`SELECT id FROM users WHERE LOWER(email) = ?`, [normalizedEmail], (emailErr, row) => {
     if (emailErr) {
       console.error('Signup email check error:', emailErr);
       return res.status(500).json({ success: false, message: 'Server error' });
@@ -599,7 +558,7 @@ app.post('/api/signup/request-otp', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Email already exists' });
     }
 
-    validateReferrer(referralCode, async (refErr, refResult) => {
+    validateReferrer(referralCode, (refErr, refResult) => {
       if (refErr) {
         console.error('Referral lookup error:', refErr);
         return res.status(500).json({ success: false, message: 'Server error' });
@@ -609,35 +568,13 @@ app.post('/api/signup/request-otp', async (req, res) => {
         return res.status(400).json({ success: false, message: 'Invalid referral code' });
       }
 
-      const otpCode = generateOtpCode();
-      const payload = {
+      createUserAccount({
         name: String(name).trim(),
         email: normalizedEmail,
         phone: String(phone).trim(),
         hashedPassword: hashPassword(password),
-        referrerId: refResult || null,
-        otpHash: hashPassword(otpCode),
-        expiresAt: Date.now() + OTP_EXPIRY_MS,
-        requestedAt: Date.now()
-      };
-
-      try {
-        const emailResult = await sendSignupOtpEmail({ email: normalizedEmail, name: payload.name, otpCode });
-        pendingSignupOtps.set(normalizedEmail, payload);
-        
-        const message = emailResult.testMode 
-          ? `TEST MODE: Your OTP is ${otpCode}. Use this code to verify your email.`
-          : 'OTP sent to your email. It expires in 10 minutes.';
-        
-        res.json({ 
-          success: true, 
-          message,
-          ...(emailResult.testMode && { testOtp: otpCode })
-        });
-      } catch (mailErr) {
-        console.error('OTP email error:', mailErr);
-        res.status(503).json({ success: false, message: 'Unable to send OTP right now. Please try again.' });
-      }
+        referrerId: refResult || null
+      }, req, res);
     });
   });
 });

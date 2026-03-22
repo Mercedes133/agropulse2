@@ -86,13 +86,9 @@
                     <input type="text" id="referral-code" name="referralCode" placeholder="Enter referral code if you have one" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-800 focus:border-blue-800">
                     <p class="text-xs text-gray-500 mt-1">Got invited? Enter your referral code to join and help them earn a bonus!</p>
                 </div>
-                <div id="otp-step" class="mb-6 hidden">
-                    <label for="otp-code" class="block text-sm font-medium text-gray-700">Email OTP</label>
-                    <input type="text" id="otp-code" name="otpCode" maxlength="6" placeholder="Enter 6-digit OTP" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-800 focus:border-blue-800">
-                    <p class="text-xs text-gray-500 mt-1">A verification code has been sent to your email. It expires in 10 minutes.</p>
-                </div>
+
                 <p id="form-message" class="hidden text-sm mb-4"></p>
-                <button id="signup-submit-btn" type="submit" class="w-full bg-blue-800 hover:bg-blue-900 text-white font-bold py-2 px-4 rounded-full transition">Send OTP</button>
+                <button id="signup-submit-btn" type="submit" class="w-full bg-blue-800 hover:bg-blue-900 text-white font-bold py-2 px-4 rounded-full transition">Create Account</button>
             </form>
             <p class="text-center mt-4 text-sm text-gray-600">Already have an account? <a href="/login" class="text-blue-800 hover:underline">Login</a></p>
         </div>
@@ -160,70 +156,41 @@
             const phone = document.getElementById('phone').value;
             const password = document.getElementById('password').value;
             const referralCode = document.getElementById('referral-code').value;
-            const otpCode = document.getElementById('otp-code').value;
             const submitBtn = document.getElementById('signup-submit-btn');
 
             try {
-                if (!otpRequested) {
-                    submitBtn.disabled = true;
-                    submitBtn.textContent = 'Sending OTP...';
-
-                    const requestOtpResponse = await fetch('/api/signup/request-otp', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ name, email, phone, password, referralCode: referralCode || undefined })
-                    });
-
-                    const requestOtpData = await requestOtpResponse.json();
-                    if (!requestOtpResponse.ok || !requestOtpData.success) {
-                        showMessage(requestOtpData.message || 'Failed to send OTP', false);
-                        submitBtn.disabled = false;
-                        submitBtn.textContent = 'Send OTP';
-                        return;
-                    }
-
-                    otpRequested = true;
-                    setIdentityInputsReadOnly(true);
-                    document.getElementById('otp-step').classList.remove('hidden');
-                    submitBtn.disabled = false;
-                    submitBtn.textContent = 'Verify OTP & Create Account';
-                    
-                    // If test OTP is provided, show it prominently and auto-fill it
-                    let messageText = requestOtpData.message || 'OTP sent. Check your email.';
-                    if (requestOtpData.testOtp) {
-                        messageText += ` 🔐 <strong>Your test OTP is: ${requestOtpData.testOtp}</strong>`;
-                        document.getElementById('otp-code').value = requestOtpData.testOtp;
-                    }
-                    showMessage(messageText, true);
-                    return;
-                }
-
                 submitBtn.disabled = true;
-                submitBtn.textContent = 'Verifying OTP...';
+                submitBtn.textContent = 'Creating Account...';
 
-                const verifyResponse = await fetch('/api/signup', {
+                const signupResponse = await fetch('/api/signup', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email, otpCode })
+                    body: JSON.stringify({ 
+                        name, 
+                        email, 
+                        phone, 
+                        password, 
+                        referralCode: referralCode || undefined 
+                    })
                 });
 
-                const verifyData = await verifyResponse.json();
-                if (!verifyResponse.ok || !verifyData.success) {
-                    showMessage(verifyData.message || 'Signup failed', false);
+                const signupData = await signupResponse.json();
+                if (!signupResponse.ok || !signupData.success) {
+                    showMessage(signupData.message || 'Signup failed', false);
                     submitBtn.disabled = false;
-                    submitBtn.textContent = 'Verify OTP & Create Account';
+                    submitBtn.textContent = 'Create Account';
                     return;
                 }
 
-                showMessage('Account created successfully. Redirecting...', true);
+                showMessage('Account created successfully! A welcome email has been sent. Redirecting to dashboard...', true);
                 window.setTimeout(() => {
                     window.location.href = '/dashboard';
-                }, 700);
+                }, 1500);
             } catch (error) {
                 console.error('Error:', error);
                 showMessage('Signup failed. Please ensure the server is running.', false);
                 submitBtn.disabled = false;
-                submitBtn.textContent = otpRequested ? 'Verify OTP & Create Account' : 'Send OTP';
+                submitBtn.textContent = 'Create Account';
             }
         });
 
