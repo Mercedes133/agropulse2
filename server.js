@@ -66,10 +66,18 @@ db.serialize(() => {
     status TEXT DEFAULT 'pending',
     payment_provider TEXT,
     payment_reference TEXT,
+    mobile_number TEXT,
     approved_at DATETIME,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(user_id) REFERENCES users(id)
   )`);
+
+  // Add mobile_number column if it doesn't exist (for existing databases)
+  db.run(`PRAGMA table_info(deposits)`, [], (err, columns) => {
+    if (!err && columns && !columns.some(col => col.name === 'mobile_number')) {
+      db.run(`ALTER TABLE deposits ADD COLUMN mobile_number TEXT`);
+    }
+  });
 
   db.all(`PRAGMA table_info(users)`, [], (err, columns) => {
     if (err) {
@@ -811,11 +819,15 @@ app.get('/api/recent-activity', (req, res) => {
 });
 
 app.post('/api/deposit', requireAuth, (req, res) => {
-  const { planId, amount, paymentProvider, paymentReference } = req.body;
+  const { planId, amount, paymentProvider, paymentReference, mobileNumber } = req.body;
   const parsedAmount = Number(amount);
 
   if (!planId || Number.isNaN(parsedAmount) || parsedAmount <= 0) {
     return res.status(400).json({ success: false, message: 'Valid plan and amount are required' });
+  }
+
+  if (!mobileNumber || String(mobileNumber).trim() === '') {
+    return res.status(400).json({ success: false, message: 'Mobile number is required' });
   }
 
   const plan = INVESTMENT_PLANS.find((item) => item.id === planId);
@@ -830,11 +842,12 @@ app.post('/api/deposit', requireAuth, (req, res) => {
   const roundedAmount = Math.round(parsedAmount * 100) / 100;
   const provider = String(paymentProvider || 'Manual').trim();
   const reference = String(paymentReference || '').trim();
+  const phone = String(mobileNumber).trim();
   const payoutDetails = calculatePlanPayout(roundedAmount, plan);
 
   db.run(
-    `INSERT INTO deposits (user_id, plan_id, plan_name, amount, status, payment_provider, payment_reference) VALUES (?, ?, ?, ?, 'pending', ?, ?)`,
-    [req.session.user.id, plan.id, plan.name, roundedAmount, provider, reference],
+    `INSERT INTO deposits (user_id, plan_id, plan_name, amount, status, payment_provider, payment_reference, mobile_number) VALUES (?, ?, ?, ?, 'pending', ?, ?, ?)`,
+    [req.session.user.id, plan.id, plan.name, roundedAmount, provider, reference, phone],
     function(insertErr) {
       if (insertErr) {
         console.error('Error creating deposit:', insertErr);
@@ -854,6 +867,7 @@ app.post('/api/deposit', requireAuth, (req, res) => {
           status: 'pending',
           paymentProvider: provider,
           paymentReference: reference,
+          mobileNumber: phone,
           projectedPayout: payoutDetails.projectedPayout,
           payoutMultiplier: payoutDetails.payoutMultiplier,
           payoutDays: payoutDetails.payoutDays,
