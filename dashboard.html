@@ -345,6 +345,10 @@
 
         async function loadPlans() {
             const response = await fetch('/api/plans');
+            if (response.status === 401) {
+                window.location.href = '/login';
+                return;
+            }
             const data = await response.json();
             appState.plans = data.plans || [];
             if (appState.plans.length && !appState.selectedPlan) {
@@ -357,6 +361,10 @@
 
         async function loadDeposits() {
             const response = await fetch('/api/deposits');
+            if (response.status === 401) {
+                window.location.href = '/login';
+                return;
+            }
             const data = await response.json();
             appState.deposits = data.deposits || [];
         }
@@ -364,6 +372,10 @@
         async function loadReferrals() {
             try {
                 const response = await fetch('/api/referrals');
+                if (response.status === 401) {
+                    window.location.href = '/login';
+                    return;
+                }
                 const data = await response.json();
                 if (data.success) {
                     appState.referrals = data.referral;
@@ -447,6 +459,14 @@
                         mobileNumber: mobileNumber
                     })
                 });
+
+                if (response.status === 401) {
+                    showDepositMessage('Your session expired. Please log in again.', false);
+                    window.setTimeout(() => {
+                        window.location.href = '/login';
+                    }, 900);
+                    return;
+                }
 
                 const data = await response.json();
                 if (!response.ok || !data.success) {
