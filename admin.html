@@ -41,6 +41,7 @@
             <div class="bg-white rounded-lg shadow p-6 mt-6">
                 <h2 class="text-xl font-bold mb-4">Pending Deposits</h2>
                 <button onclick="loadPendingDeposits()" class="bg-blue-800 text-white px-4 py-2 rounded mb-4">Refresh</button>
+                <input id="pending-deposits-filter" type="text" placeholder="Filter by username, email, phone, or reference" class="w-full border border-gray-300 rounded px-3 py-2 mb-4">
                 <div id="pending-deposits-list" class="space-y-4">
                     <!-- Pending deposits will be listed here -->
                 </div>
@@ -202,7 +203,18 @@
                 const list = document.getElementById('pending-deposits-list');
                 list.innerHTML = '';
 
-                const deposits = data.deposits || [];
+                const filterValue = (document.getElementById('pending-deposits-filter').value || '').toLowerCase().trim();
+                const deposits = (data.deposits || []).filter((deposit) => {
+                    if (!filterValue) return true;
+                    const searchable = [
+                        deposit.user_name,
+                        deposit.user_email,
+                        deposit.mobile_number,
+                        deposit.payment_reference,
+                        deposit.plan_name
+                    ].map((v) => String(v || '').toLowerCase()).join(' ');
+                    return searchable.includes(filterValue);
+                });
                 if (deposits.length === 0) {
                     list.innerHTML = '<p class="text-gray-500">No pending deposits.</p>';
                     return;
@@ -273,6 +285,7 @@
             loadUsersOverview();
             loadPendingUsers();
             loadPendingDeposits();
+            document.getElementById('pending-deposits-filter').addEventListener('input', loadPendingDeposits);
         });
     </script>
 </body>

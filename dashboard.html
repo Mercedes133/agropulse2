@@ -71,51 +71,55 @@
                 </div>
 
                 <aside class="bg-white border border-slate-100 rounded-2xl p-6 shadow-sm">
-                    <h2 class="text-xl font-bold text-slate-900 mb-4">Make Deposit</h2>
-                    <div class="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
-                        <p class="text-xs text-amber-700 uppercase font-semibold">How to Pay</p>
-                        <p class="text-sm text-slate-700 mt-1">1) Send payment to the number below. 2) Enter the same sender mobile number. 3) Paste transaction reference and submit.</p>
-                        <p class="text-sm mt-2"><span class="font-semibold">Provider:</span> <span id="pay-provider">MTN</span></p>
-                        <p class="text-sm"><span class="font-semibold">Account Name:</span> <span id="pay-account-name">Agro Pluse</span></p>
-                        <p class="text-sm"><span class="font-semibold">Payment Number:</span> <span id="pay-number">0550000000</span></p>
-                        <p class="text-xs text-amber-700 mt-2">Update these numbers in dashboard settings/code to your real payment numbers.</p>
+                    <h2 class="text-xl font-bold text-slate-900 mb-1">Make Deposit</h2>
+                    <p class="text-sm text-slate-500 mb-5">Pay instantly with your mobile money</p>
+
+                    <!-- Step 1: Select Network -->
+                    <p class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">1. Select Network</p>
+                    <div id="network-selector" class="grid grid-cols-3 gap-2 mb-5">
+                        <button onclick="selectNetwork('mtn')" id="net-mtn"
+                            class="network-btn flex flex-col items-center justify-center p-3 rounded-xl border-2 border-yellow-400 bg-yellow-50 transition">
+                            <span class="text-lg font-extrabold text-yellow-700">MTN</span>
+                            <span class="text-xs text-yellow-600 mt-0.5">MoMo</span>
+                        </button>
+                        <button onclick="selectNetwork('telecel')" id="net-telecel"
+                            class="network-btn flex flex-col items-center justify-center p-3 rounded-xl border-2 border-slate-200 bg-slate-50 transition">
+                            <span class="text-lg font-extrabold text-red-600">TCL</span>
+                            <span class="text-xs text-red-500 mt-0.5">Telecel</span>
+                        </button>
+                        <button onclick="selectNetwork('airteltigo')" id="net-airteltigo"
+                            class="network-btn flex flex-col items-center justify-center p-3 rounded-xl border-2 border-slate-200 bg-slate-50 transition">
+                            <span class="text-lg font-extrabold text-red-800">AT</span>
+                            <span class="text-xs text-red-700 mt-0.5">AirtelTigo</span>
+                        </button>
                     </div>
-                    <form id="deposit-form" class="space-y-4">
-                        <div>
-                            <label class="block text-sm text-slate-600 mb-1">Plan</label>
-                            <input id="selected-plan-input" type="text" readonly value="No plan selected" class="w-full border border-slate-300 rounded-lg px-3 py-2 bg-slate-50 text-slate-700">
-                        </div>
-                        <div>
-                            <label for="amount" class="block text-sm text-slate-600 mb-1">Amount (GH₵)</label>
-                            <input id="amount" type="number" min="1" step="0.01" placeholder="Enter deposit amount" class="w-full border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-200">
-                        </div>
-                        <div>
-                            <label for="payment-provider" class="block text-sm text-slate-600 mb-1">Payment Method</label>
-                            <select id="payment-provider" class="w-full border border-slate-300 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-blue-200">
-                                <option value="MTN">MTN</option>
-                                <option value="Telecel">Telecel</option>
-                                <option value="AirtelTigo">AirtelTigo</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label for="mobile-number" class="block text-sm text-slate-600 mb-1">Mobile Number</label>
-                            <input id="mobile-number" type="tel" placeholder="Enter your mobile number" class="w-full border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-200" required>
-                        </div>
-                        <div>
-                            <label for="payment-reference" class="block text-sm text-slate-600 mb-1">Payment Reference (optional)</label>
-                            <input id="payment-reference" type="text" placeholder="Transaction/reference ID" class="w-full border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-200">
-                        </div>
-                        <div class="bg-blue-50 border border-blue-100 rounded-lg p-3">
-                            <p class="text-xs text-blue-700 uppercase">Expected Return</p>
-                            <p id="expected-return" class="text-lg font-bold text-blue-900">GH₵ 0.00</p>
-                            <p id="expected-return-note" class="text-xs text-blue-700">7x in 7 days</p>
-                        </div>
-                        <p id="deposit-message" class="hidden text-sm"></p>
-                        <button type="submit" class="w-full bg-blue-800 hover:bg-blue-900 text-white font-semibold py-2 rounded-lg transition">Deposit Now</button>
-                    </form>
-                    <a href="mailto:agropulse1@gmail.com" class="mt-5 inline-flex items-center text-blue-600 hover:text-blue-700 font-semibold">
-                        <i class="fa-solid fa-envelope mr-2"></i>Contact Support
-                    </a>
+
+                    <!-- Step 2: Mobile Number -->
+                    <p class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">2. Mobile Money Number</p>
+                    <div class="relative mb-5">
+                        <span id="network-prefix" class="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500">GH +233</span>
+                        <input id="momo-number" type="tel" maxlength="10" placeholder="e.g. 0241234567"
+                            class="w-full pl-24 pr-4 py-3 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                    </div>
+
+                    <!-- Step 3: Amount -->
+                    <p class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">3. Amount (GH₵)</p>
+                    <div class="relative mb-5">
+                        <span class="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400">GH₵</span>
+                        <input id="deposit-amount" type="number" min="1" placeholder="Enter amount"
+                            class="w-full pl-14 pr-4 py-3 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                    </div>
+
+                    <!-- Pay Button -->
+                    <button id="pay-now-btn" onclick="submitMoMoPayment()"
+                        class="w-full bg-blue-800 hover:bg-blue-900 active:scale-95 text-white font-bold py-3 rounded-xl text-base transition transform flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-lock text-sm"></i> Pay Now
+                    </button>
+
+                    <!-- Status message -->
+                    <div id="payment-status" class="hidden mt-4 rounded-xl p-4 text-sm text-center"></div>
                 </aside>
             </section>
 
@@ -205,47 +209,97 @@
             referrals: null
         };
 
-        const PAYMENT_ACCOUNTS = {
-            MTN: { provider: 'MTN', accountName: 'Agro Pluse', number: '0550000000' },
-            Telecel: { provider: 'Telecel', accountName: 'Agro Pluse', number: '0200000000' },
-            AirtelTigo: { provider: 'AirtelTigo', accountName: 'Agro Pluse', number: '0270000000' }
+        let selectedNetwork = 'mtn';
+
+        const NETWORK_NAMES = {
+            mtn: 'MTN Mobile Money',
+            telecel: 'Telecel',
+            airteltigo: 'AirtelTigo'
         };
+
+        function selectNetwork(network) {
+            selectedNetwork = network;
+            const buttons = document.querySelectorAll('.network-btn');
+            buttons.forEach(btn => {
+                btn.classList.remove('border-yellow-400','bg-yellow-50','border-red-400','bg-red-50','border-blue-500','bg-blue-50','ring-2','ring-offset-1','ring-yellow-400','ring-red-400');
+                btn.classList.add('border-slate-200', 'bg-slate-50');
+            });
+            const selected = document.getElementById('net-' + network);
+            selected.classList.remove('border-slate-200', 'bg-slate-50');
+            if (network === 'mtn') {
+                selected.classList.add('border-yellow-400', 'bg-yellow-50', 'ring-2', 'ring-offset-1', 'ring-yellow-400');
+            } else {
+                selected.classList.add('border-red-400', 'bg-red-50', 'ring-2', 'ring-offset-1', 'ring-red-400');
+            }
+        }
+
+        async function submitMoMoPayment() {
+            const momoNumber = document.getElementById('momo-number').value.trim();
+            const amountRaw = document.getElementById('deposit-amount').value.trim();
+            const btn = document.getElementById('pay-now-btn');
+
+            if (!momoNumber || momoNumber.length < 10) {
+                showPaymentStatus('error', 'Please enter a valid 10-digit mobile money number.');
+                return;
+            }
+            if (!amountRaw || isNaN(Number(amountRaw)) || Number(amountRaw) <= 0) {
+                showPaymentStatus('error', 'Please enter a valid amount.');
+                return;
+            }
+            if (!appState.selectedPlan) {
+                showPaymentStatus('error', 'Please select an investment plan first.');
+                return;
+            }
+
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i> Processing...';
+
+            try {
+                const res = await fetch('/api/payment/initiate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        planId: appState.selectedPlan.id,
+                        amount: Number(amountRaw),
+                        mobileNumber: momoNumber,
+                        network: selectedNetwork
+                    })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    showPaymentStatus('success', data.message);
+                    document.getElementById('momo-number').value = '';
+                    document.getElementById('deposit-amount').value = '';
+                    await loadDeposits();
+                    renderHistory();
+                    renderSummary();
+                } else {
+                    showPaymentStatus('error', data.message || 'Payment failed. Please try again.');
+                }
+            } catch (err) {
+                showPaymentStatus('error', 'Network error. Please check your connection and try again.');
+            }
+
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fa-solid fa-lock text-sm"></i> Pay Now';
+        }
+
+        function showPaymentStatus(type, message) {
+            const div = document.getElementById('payment-status');
+            div.classList.remove('hidden', 'bg-green-50', 'text-green-800', 'border', 'border-green-300',
+                'bg-red-50', 'text-red-800', 'border-red-300');
+            if (type === 'success') {
+                div.classList.add('bg-green-50', 'text-green-800', 'border', 'border-green-300');
+            } else {
+                div.classList.add('bg-red-50', 'text-red-800', 'border', 'border-red-300');
+            }
+            div.textContent = message;
+            div.classList.remove('hidden');
+        }
 
         function formatCurrency(value) {
             const amount = Number(value || 0);
             return `GH₵ ${amount.toFixed(2)}`;
-        }
-
-        function showDepositMessage(message, isSuccess) {
-            const msg = document.getElementById('deposit-message');
-            msg.textContent = message;
-            msg.className = `text-sm ${isSuccess ? 'text-green-600' : 'text-red-600'}`;
-        }
-
-        function updateExpectedReturnPreview() {
-            const amount = Number(document.getElementById('amount').value || 0);
-            const plan = appState.selectedPlan;
-
-            if (!plan || amount <= 0) {
-                document.getElementById('expected-return').textContent = formatCurrency(0);
-                document.getElementById('expected-return-note').textContent = '7x in 7 days';
-                return;
-            }
-
-            const payoutMultiplier = Number(plan.payoutMultiplier || 7);
-            const payoutDays = Number(plan.payoutDays || 7);
-            const expected = amount * payoutMultiplier;
-
-            document.getElementById('expected-return').textContent = formatCurrency(expected);
-            document.getElementById('expected-return-note').textContent = `${payoutMultiplier}x in ${payoutDays} days`;
-        }
-
-        function updatePaymentInstructions() {
-            const provider = document.getElementById('payment-provider').value;
-            const details = PAYMENT_ACCOUNTS[provider] || PAYMENT_ACCOUNTS.MTN;
-            document.getElementById('pay-provider').textContent = details.provider;
-            document.getElementById('pay-account-name').textContent = details.accountName;
-            document.getElementById('pay-number').textContent = details.number;
         }
 
         const PLAN_IMAGES = {
@@ -301,11 +355,7 @@
                     const selectedId = button.dataset.planId;
                     appState.selectedPlan = appState.plans.find((plan) => plan.id === selectedId) || null;
                     document.getElementById('selected-plan-name').textContent = appState.selectedPlan ? appState.selectedPlan.name : 'None';
-                    document.getElementById('selected-plan-input').value = appState.selectedPlan
-                        ? `${appState.selectedPlan.name} (Min ${formatCurrency(appState.selectedPlan.minDeposit)})`
-                        : 'No plan selected';
                     renderPlans();
-                    updateExpectedReturnPreview();
                 });
             });
         }
@@ -376,8 +426,6 @@
             if (appState.plans.length && !appState.selectedPlan) {
                 appState.selectedPlan = appState.plans[0];
                 document.getElementById('selected-plan-name').textContent = appState.selectedPlan.name;
-                document.getElementById('selected-plan-input').value = `${appState.selectedPlan.name} (Min ${formatCurrency(appState.selectedPlan.minDeposit)})`;
-                updateExpectedReturnPreview();
             }
         }
 
@@ -448,67 +496,6 @@
             }
         }
 
-        document.getElementById('deposit-form').addEventListener('submit', async (event) => {
-            event.preventDefault();
-            showDepositMessage('', false);
-
-            if (!appState.selectedPlan) {
-                showDepositMessage('Please select an investment plan first.', false);
-                return;
-            }
-
-            const amount = Number(document.getElementById('amount').value);
-            if (!amount || amount <= 0) {
-                showDepositMessage('Enter a valid deposit amount.', false);
-                return;
-            }
-
-            const mobileNumber = document.getElementById('mobile-number').value.trim();
-            if (!mobileNumber) {
-                showDepositMessage('Please enter your mobile number.', false);
-                return;
-            }
-
-            try {
-                const response = await fetch('/api/deposit', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        planId: appState.selectedPlan.id,
-                        amount,
-                        paymentProvider: document.getElementById('payment-provider').value,
-                        paymentReference: document.getElementById('payment-reference').value.trim(),
-                        mobileNumber: mobileNumber
-                    })
-                });
-
-                if (response.status === 401) {
-                    showDepositMessage('Your session expired. Please log in again.', false);
-                    window.setTimeout(() => {
-                        window.location.href = '/login';
-                    }, 900);
-                    return;
-                }
-
-                const data = await response.json();
-                if (!response.ok || !data.success) {
-                    showDepositMessage(data.message || 'Deposit failed.', false);
-                    return;
-                }
-
-                showDepositMessage(`Deposit submitted: ${formatCurrency(data.deposit.amount)} to ${data.deposit.planName}. It will reflect after admin confirms payment.`, true);
-                document.getElementById('amount').value = '';
-                document.getElementById('mobile-number').value = '';
-                document.getElementById('payment-reference').value = '';
-                await refreshDashboard();
-            } catch (error) {
-                showDepositMessage('Deposit failed. Please try again.', false);
-            }
-        });
-
-        document.getElementById('amount').addEventListener('input', updateExpectedReturnPreview);
-        document.getElementById('payment-provider').addEventListener('change', updatePaymentInstructions);
-
         document.getElementById('copy-referral-btn').addEventListener('click', () => {
             const input = document.getElementById('referral-code-input');
             const code = input.value;
@@ -564,7 +551,7 @@
         });
 
         refreshDashboard();
-        updatePaymentInstructions();
+        selectNetwork('mtn');
     </script>
 </body>
 </html>

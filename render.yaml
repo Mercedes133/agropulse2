@@ -26,3 +26,7 @@ services:
         value: CHANGE_ME
       - key: FROM_EMAIL
         value: CHANGE_ME
+      - key: PAYSTACK_SECRET_KEY
+        value: CHANGE_ME
+      - key: PAYSTACK_PUBLIC_KEY
+        value: CHANGE_ME

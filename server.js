@@ -7,11 +7,19 @@ const crypto = require('crypto');
 const fs = require('fs');
 const nodemailer = require('nodemailer');
 
+const https = require('https');
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 const DATABASE_PATH = process.env.DATABASE_PATH || './users.db';
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'change_me_admin_password';
+
+// Paystack configuration — swap in your live keys when ready
+const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_SECRET_KEY || '';
+const PAYSTACK_PUBLIC_KEY = process.env.PAYSTACK_PUBLIC_KEY || '';
+const PAYSTACK_ENABLED = Boolean(PAYSTACK_SECRET_KEY && PAYSTACK_SECRET_KEY !== '');
+
 const REFERRAL_TARGET = 7;
 const REFERRAL_BONUS_AMOUNT = 50;
 const OTP_EXPIRY_MS = 10 * 60 * 1000;
@@ -27,6 +35,19 @@ app.use((req, res, next) => {
   res.setHeader('Bypass-Tunnel-Reminder', 'true');
   next();
 });
+
+// Capture raw body for Paystack webhook signature verification before JSON parsing
+app.use((req, res, next) => {
+  if (req.path === '/api/payment/webhook') {
+    let raw = '';
+    req.setEncoding('utf8');
+    req.on('data', chunk => { raw += chunk; });
+    req.on('end', () => { req.rawBody = raw; next(); });
+  } else {
+    next();
+  }
+});
+
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(session({
@@ -49,10 +70,7 @@ app.use((req, res, next) => {
     || pathName.startsWith('/api/approve/')
     || pathName.startsWith('/api/reject/');
 
-  if (isAdminPage || isAdminApi) {
-    return requireAdminAccess(req, res, next);
-  }
-
+  // Admin access is open (no password required)
   next();
 });
 
@@ -199,6 +217,26 @@ db.serialize(() => {
         }
       });
     }
+  });
+
+  db.all(`SELECT id, phone FROM users WHERE phone IS NOT NULL AND TRIM(phone) <> ''`, [], (scanErr, rows) => {
+    if (scanErr) {
+      console.error('Error scanning user phone numbers:', scanErr);
+      return;
+    }
+
+    (rows || []).forEach((row) => {
+      const normalizedPhone = normalizePhone(row.phone);
+      if (!normalizedPhone || normalizedPhone === String(row.phone)) {
+        return;
+      }
+
+      db.run(`UPDATE users SET phone = ? WHERE id = ?`, [normalizedPhone, row.id], (updateErr) => {
+        if (updateErr) {
+          console.error(`Error normalizing phone for user ${row.id}:`, updateErr);
+        }
+      });
+    });
   });
 });
 
@@ -546,6 +584,35 @@ function normalizePhone(phone) {
   return digitsOnly;
 }
 
+function getPhoneLookupVariants(phoneInput) {
+  const digitsOnly = String(phoneInput || '').replace(/\D/g, '');
+  const normalized = normalizePhone(digitsOnly);
+  const variants = new Set();
+
+  if (digitsOnly) {
+    variants.add(digitsOnly);
+  }
+
+  if (normalized) {
+    variants.add(normalized);
+  }
+
+  if (normalized && normalized.startsWith('0') && normalized.length === 10) {
+    variants.add(`233${normalized.slice(1)}`);
+  }
+
+  if (digitsOnly.startsWith('233') && digitsOnly.length === 12) {
+    variants.add(`0${digitsOnly.slice(3)}`);
+  }
+
+  const list = Array.from(variants).filter(Boolean);
+  while (list.length < 3) {
+    list.push('');
+  }
+
+  return list.slice(0, 3);
+}
+
 function generateOtpCode() {
   return String(Math.floor(100000 + (Math.random() * 900000)));
 }
@@ -676,6 +743,7 @@ app.post('/api/signup', (req, res) => {
   const { name, email, phone, password, referralCode } = req.body;
   const normalizedEmail = normalizeEmail(email);
   const normalizedPhone = normalizePhone(phone);
+  const [phoneVariant1, phoneVariant2, phoneVariant3] = getPhoneLookupVariants(phone);
 
   if (!name || !normalizedEmail || !normalizedPhone || !password) {
     return res.status(400).json({ success: false, message: 'All fields are required' });
@@ -692,13 +760,13 @@ app.post('/api/signup', (req, res) => {
     `SELECT id,
             CASE
               WHEN LOWER(email) = ? THEN 'email'
-              WHEN phone = ? THEN 'phone'
+              WHEN phone IN (?, ?, ?) THEN 'phone'
               ELSE 'unknown'
             END AS duplicate_type
      FROM users
-     WHERE LOWER(email) = ? OR phone = ?
+     WHERE LOWER(email) = ? OR phone IN (?, ?, ?)
      LIMIT 1`,
-    [normalizedEmail, normalizedPhone, normalizedEmail, normalizedPhone],
+    [normalizedEmail, phoneVariant1, phoneVariant2, phoneVariant3, normalizedEmail, phoneVariant1, phoneVariant2, phoneVariant3],
     (emailErr, row) => {
     if (emailErr) {
       console.error('Signup email check error:', emailErr);
@@ -737,7 +805,7 @@ app.post('/api/login', (req, res) => {
   const { email, password } = req.body;
   const identifier = String(email || '').trim();
   const normalizedEmail = normalizeEmail(identifier);
-  const normalizedPhone = normalizePhone(identifier);
+  const [phoneVariant1, phoneVariant2, phoneVariant3] = getPhoneLookupVariants(identifier);
   const rawPassword = String(password || '');
   const trimmedPassword = rawPassword.trim();
   
@@ -752,10 +820,10 @@ app.post('/api/login', (req, res) => {
     db.get(
       `SELECT *
        FROM users
-       WHERE (LOWER(email) = ? OR phone = ?)
+       WHERE (LOWER(email) = ? OR phone IN (?, ?, ?))
          AND password = ?
          AND status = 'approved'`,
-      [normalizedEmail, normalizedPhone, hashedPassword],
+      [normalizedEmail, phoneVariant1, phoneVariant2, phoneVariant3, hashedPassword],
       callback
     );
   };
@@ -963,7 +1031,7 @@ app.get('/api/recent-activity', (req, res) => {
 });
 
 app.post('/api/deposit', requireAuth, (req, res) => {
-  const { planId, amount, paymentProvider, paymentReference, mobileNumber } = req.body;
+  const { planId, amount, paymentReference, mobileNumber } = req.body;
   const parsedAmount = Number(amount);
 
   if (!planId || Number.isNaN(parsedAmount) || parsedAmount <= 0) {
@@ -984,7 +1052,7 @@ app.post('/api/deposit', requireAuth, (req, res) => {
   }
 
   const roundedAmount = Math.round(parsedAmount * 100) / 100;
-  const provider = String(paymentProvider || 'Manual').trim();
+  const provider = 'Manual';
   const reference = String(paymentReference || '').trim();
   const phone = String(mobileNumber).trim();
   const payoutDetails = calculatePlanPayout(roundedAmount, plan);
@@ -1197,6 +1265,184 @@ app.get('/api/pending', (req, res) => {
     res.json({ success: true, users: rows || [] });
   });
 });
+
+// ─── Paystack helpers ──────────────────────────────────────────────────────────
+
+function paystackRequest(method, path, body) {
+  return new Promise((resolve, reject) => {
+    const payload = body ? JSON.stringify(body) : null;
+    const options = {
+      hostname: 'api.paystack.co',
+      path,
+      method,
+      headers: {
+        Authorization: `Bearer ${PAYSTACK_SECRET_KEY}`,
+        'Content-Type': 'application/json',
+        ...(payload ? { 'Content-Length': Buffer.byteLength(payload) } : {})
+      }
+    };
+    const req = https.request(options, (res2) => {
+      let data = '';
+      res2.on('data', chunk => { data += chunk; });
+      res2.on('end', () => {
+        try { resolve(JSON.parse(data)); }
+        catch (e) { reject(new Error('Invalid JSON from Paystack')); }
+      });
+    });
+    req.on('error', reject);
+    if (payload) req.write(payload);
+    req.end();
+  });
+}
+
+// Map our network IDs to Paystack's Ghana MoMo provider codes
+const PAYSTACK_NETWORK_MAP = {
+  mtn: 'mtn',
+  telecel: 'vod',
+  airteltigo: 'tigo'
+};
+
+// ─── Expose Paystack public key to frontend ────────────────────────────────────
+
+app.get('/api/payment/config', (req, res) => {
+  res.json({ paystackEnabled: PAYSTACK_ENABLED, publicKey: PAYSTACK_PUBLIC_KEY });
+});
+
+// ─── Initiate a Paystack mobile money charge ───────────────────────────────────
+
+app.post('/api/payment/initiate', requireAuth, (req, res) => {
+  if (!PAYSTACK_ENABLED) {
+    return res.status(503).json({ success: false, message: 'Online payment is not yet active. Please try again later.' });
+  }
+
+  const { planId, amount, mobileNumber, network } = req.body;
+  const parsedAmount = Number(amount);
+
+  if (!planId || isNaN(parsedAmount) || parsedAmount <= 0) {
+    return res.status(400).json({ success: false, message: 'Valid plan and amount are required.' });
+  }
+  if (!mobileNumber || String(mobileNumber).trim().length < 10) {
+    return res.status(400).json({ success: false, message: 'A valid mobile number is required.' });
+  }
+  const paystackProvider = PAYSTACK_NETWORK_MAP[network];
+  if (!paystackProvider) {
+    return res.status(400).json({ success: false, message: 'Please select a valid network.' });
+  }
+
+  const plan = INVESTMENT_PLANS.find(p => p.id === planId);
+  if (!plan) {
+    return res.status(400).json({ success: false, message: 'Invalid investment plan selected.' });
+  }
+  if (parsedAmount < plan.minDeposit) {
+    return res.status(400).json({ success: false, message: `Minimum deposit for ${plan.name} is GH₵ ${plan.minDeposit}.` });
+  }
+
+  const roundedAmount = Math.round(parsedAmount * 100) / 100;
+  const amountInPesewas = Math.round(roundedAmount * 100); // Paystack needs pesewas
+  const phone = String(mobileNumber).trim();
+  const userEmail = req.session.user.email;
+  const userId = req.session.user.id;
+
+  // First create a pending deposit, then charge via Paystack
+  db.run(
+    `INSERT INTO deposits (user_id, plan_id, plan_name, amount, status, payment_provider, mobile_number)
+     VALUES (?, ?, ?, ?, 'pending', ?, ?)`,
+    [userId, plan.id, plan.name, roundedAmount, `Paystack/${PAYSTACK_NETWORK_MAP[network].toUpperCase()}`, phone],
+    function(insertErr) {
+      if (insertErr) {
+        console.error('Deposit insert error:', insertErr);
+        return res.status(500).json({ success: false, message: 'Could not create deposit record.' });
+      }
+
+      const depositId = this.lastID;
+
+      paystackRequest('POST', '/charge', {
+        email: userEmail,
+        amount: amountInPesewas,
+        currency: 'GHS',
+        mobile_money: { phone, provider: paystackProvider }
+      }).then(paystackRes => {
+        if (!paystackRes.status) {
+          // Paystack rejected — remove pending deposit
+          db.run(`DELETE FROM deposits WHERE id = ?`, [depositId]);
+          return res.status(400).json({ success: false, message: paystackRes.message || 'Payment initiation failed.' });
+        }
+
+        const ref = paystackRes.data.reference;
+        // Store reference so webhook can match it later
+        db.run(`UPDATE deposits SET payment_reference = ? WHERE id = ?`, [ref, depositId]);
+
+        res.json({
+          success: true,
+          message: `A payment prompt has been sent to ${phone}. Please approve it on your phone to complete your deposit.`,
+          reference: ref,
+          depositId
+        });
+      }).catch(err => {
+        console.error('Paystack charge error:', err);
+        db.run(`DELETE FROM deposits WHERE id = ?`, [depositId]);
+        res.status(500).json({ success: false, message: 'Payment gateway error. Please try again.' });
+      });
+    }
+  );
+});
+
+// ─── Paystack webhook — auto-approves deposit on charge.success ────────────────
+
+app.post('/api/payment/webhook', (req, res) => {
+  // Verify the webhook came from Paystack
+  const signature = req.headers['x-paystack-signature'];
+  const expectedSig = crypto.createHmac('sha512', PAYSTACK_SECRET_KEY)
+    .update(req.rawBody || '')
+    .digest('hex');
+
+  if (signature !== expectedSig) {
+    return res.status(401).send('Invalid signature');
+  }
+
+  res.sendStatus(200); // Acknowledge immediately
+
+  let event;
+  try { event = JSON.parse(req.rawBody); } catch (e) { return; }
+
+  if (event.event !== 'charge.success') return;
+
+  const ref = event.data && event.data.reference;
+  if (!ref) return;
+
+  db.get(
+    `SELECT d.id, d.user_id, d.plan_name, d.amount, d.payment_reference,
+            u.email AS user_email, u.name AS user_name
+     FROM deposits d
+     INNER JOIN users u ON u.id = d.user_id
+     WHERE d.payment_reference = ? AND d.status = 'pending'`,
+    [ref],
+    (err, deposit) => {
+      if (err || !deposit) return;
+
+      db.run(
+        `UPDATE deposits SET status = 'approved', approved_at = CURRENT_TIMESTAMP WHERE id = ?`,
+        [deposit.id],
+        (updateErr) => {
+          if (updateErr) {
+            console.error('Webhook deposit approve error:', updateErr);
+            return;
+          }
+          sendDepositStatusEmail({
+            email: deposit.user_email,
+            name: deposit.user_name,
+            status: 'approved',
+            amount: deposit.amount,
+            planName: deposit.plan_name,
+            reference: deposit.payment_reference
+          }).catch(e => console.error('Webhook email error:', e));
+        }
+      );
+    }
+  );
+});
+
+// ──────────────────────────────────────────────────────────────────────────────
 
 app.post('/api/approve/:id', (req, res) => {
   const id = req.params.id;
