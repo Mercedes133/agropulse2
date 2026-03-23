@@ -16,6 +16,10 @@ services:
         generateValue: true
       - key: DATABASE_PATH
         value: /opt/render/project/src/data/users.db
+      - key: ADMIN_USERNAME
+        value: admin
+      - key: ADMIN_PASSWORD
+        value: Dacosta133@
       - key: SMTP_HOST
         value: smtp.gmail.com
       - key: SMTP_PORT

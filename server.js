@@ -13,7 +13,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const DATABASE_PATH = process.env.DATABASE_PATH || './users.db';
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'change_me_admin_password';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'Dacosta133@';
 
 // Paystack configuration — swap in your live keys when ready
 const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_SECRET_KEY || '';
@@ -70,7 +70,32 @@ app.use((req, res, next) => {
     || pathName.startsWith('/api/approve/')
     || pathName.startsWith('/api/reject/');
 
-  // Admin access is open (no password required)
+  if (!isAdminPage && !isAdminApi) {
+    return next();
+  }
+
+  const authHeader = String(req.headers.authorization || '');
+  if (!authHeader.startsWith('Basic ')) {
+    res.setHeader('WWW-Authenticate', 'Basic realm="Admin Area"');
+    return res.status(401).send('Authentication required');
+  }
+
+  try {
+    const base64Credentials = authHeader.slice('Basic '.length).trim();
+    const credentials = Buffer.from(base64Credentials, 'base64').toString('utf8');
+    const separatorIndex = credentials.indexOf(':');
+    const username = separatorIndex >= 0 ? credentials.slice(0, separatorIndex) : '';
+    const password = separatorIndex >= 0 ? credentials.slice(separatorIndex + 1) : '';
+
+    if (username !== ADMIN_USERNAME || password !== ADMIN_PASSWORD) {
+      res.setHeader('WWW-Authenticate', 'Basic realm="Admin Area"');
+      return res.status(401).send('Invalid admin credentials');
+    }
+  } catch (error) {
+    res.setHeader('WWW-Authenticate', 'Basic realm="Admin Area"');
+    return res.status(401).send('Invalid authentication header');
+  }
+
   next();
 });
 
