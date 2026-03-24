@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Deposit</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen">
+    <div class="bg-white p-8 rounded shadow-md w-full max-w-md">
+        <h2 class="text-2xl font-bold mb-4" id="plan-title">Deposit for Plan</h2>
+        <form id="deposit-form" class="space-y-4">
+            <input type="hidden" id="plan-name" name="plan" />
+            <div>
+                <label for="amount" class="block text-gray-700">Deposit Amount</label>
+                <input type="number" id="amount" name="amount" required class="mt-1 block w-full border border-gray-300 rounded px-3 py-2" min="1">
+            </div>
+            <button type="submit" class="w-full bg-green-600 text-white py-2 rounded hover:bg-green-700">Deposit</button>
+        </form>
+        <div id="confirmation" class="hidden mt-4 text-green-700 font-semibold"></div>
+    </div>
+    <script>
+        // Get plan from URL
+        const params = new URLSearchParams(window.location.search);
+        const plan = params.get('plan');
+        if (plan) {
+            document.getElementById('plan-title').textContent = `Deposit for ${plan}`;
+            document.getElementById('plan-name').value = plan;
+        }
+
+        document.getElementById('deposit-form').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const amount = document.getElementById('amount').value;
+            const plan = document.getElementById('plan-name').value;
+            // Simulate deposit API call
+            // TODO: Replace with real API call
+            setTimeout(() => {
+                document.getElementById('confirmation').textContent = `Your investment in ${plan} has begun!`;
+                document.getElementById('confirmation').classList.remove('hidden');
+                setTimeout(() => {
+                    window.location.href = 'home.html';
+                }, 2000);
+            }, 1000);
+        });
+    </script>
+</body>
+</html>

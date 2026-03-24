@@ -190,7 +190,7 @@
                                 </div>
                             </div>
                             <p class="text-green-700 font-semibold mb-5">7x return in 7 days</p>
-                            <a href="/signup" class="inline-flex w-full justify-center bg-slate-900 hover:bg-slate-800 text-white py-3 rounded-xl font-semibold transition">Invest Now</a>
+                            <a href="#" onclick="goToDeposit('Poultry Starter')" class="inline-flex w-full justify-center bg-slate-900 hover:bg-slate-800 text-white py-3 rounded-xl font-semibold transition">Invest Now</a>
                         </div>
                     </article>
 
@@ -211,7 +211,7 @@
                                 </div>
                             </div>
                             <p class="text-green-700 font-semibold mb-5">7x return in 7 days</p>
-                            <a href="/signup" class="inline-flex w-full justify-center bg-blue-800 hover:bg-blue-900 text-white py-3 rounded-xl font-semibold transition">Invest Now</a>
+                            <a href="#" onclick="goToDeposit('Boer Goat')" class="inline-flex w-full justify-center bg-blue-800 hover:bg-blue-900 text-white py-3 rounded-xl font-semibold transition">Invest Now</a>
                         </div>
                     </article>
 
@@ -232,7 +232,7 @@
                                 </div>
                             </div>
                             <p class="text-green-700 font-semibold mb-5">7x return in 7 days</p>
-                            <a href="/signup" class="inline-flex w-full justify-center bg-slate-900 hover:bg-slate-800 text-white py-3 rounded-xl font-semibold transition">Invest Now</a>
+                            <a href="#" onclick="goToDeposit('Eggs')" class="inline-flex w-full justify-center bg-slate-900 hover:bg-slate-800 text-white py-3 rounded-xl font-semibold transition">Invest Now</a>
                         </div>
                     </article>
 
@@ -253,7 +253,7 @@
                                 </div>
                             </div>
                             <p class="text-green-700 font-semibold mb-5">7x return in 7 days</p>
-                            <a href="/signup" class="inline-flex w-full justify-center bg-slate-900 hover:bg-slate-800 text-white py-3 rounded-xl font-semibold transition">Invest Now</a>
+                            <a href="#" onclick="goToDeposit('Dairy Cow')" class="inline-flex w-full justify-center bg-slate-900 hover:bg-slate-800 text-white py-3 rounded-xl font-semibold transition">Invest Now</a>
                         </div>
                     </article>
 
@@ -274,7 +274,7 @@
                                 </div>
                             </div>
                             <p class="text-green-700 font-semibold mb-5">7x return in 7 days</p>
-                            <a href="/signup" class="inline-flex w-full justify-center bg-slate-900 hover:bg-slate-800 text-white py-3 rounded-xl font-semibold transition">Invest Now</a>
+                            <a href="#" onclick="goToDeposit('Maize Farm')" class="inline-flex w-full justify-center bg-slate-900 hover:bg-slate-800 text-white py-3 rounded-xl font-semibold transition">Invest Now</a>
                         </div>
                     </article>
 
@@ -295,7 +295,7 @@
                                 </div>
                             </div>
                             <p class="text-green-700 font-semibold mb-5">7x return in 10 days</p>
-                            <a href="/signup" class="inline-flex w-full justify-center bg-slate-900 hover:bg-slate-800 text-white py-3 rounded-xl font-semibold transition">Invest Now</a>
+                            <a href="#" onclick="goToDeposit('Tilapia Pond')" class="inline-flex w-full justify-center bg-slate-900 hover:bg-slate-800 text-white py-3 rounded-xl font-semibold transition">Invest Now</a>
                         </div>
                     </article>
 
@@ -316,7 +316,7 @@
                                 </div>
                             </div>
                             <p class="text-green-700 font-semibold mb-5">7x return in 10 days</p>
-                            <a href="/signup" class="inline-flex w-full justify-center bg-slate-900 hover:bg-slate-800 text-white py-3 rounded-xl font-semibold transition">Invest Now</a>
+                            <a href="#" onclick="goToDeposit('Catfish Pond')" class="inline-flex w-full justify-center bg-slate-900 hover:bg-slate-800 text-white py-3 rounded-xl font-semibold transition">Invest Now</a>
                         </div>
                     </article>
 
@@ -337,7 +337,7 @@
                                 </div>
                             </div>
                             <p class="text-green-700 font-semibold mb-5">7x return in 10 days</p>
-                            <a href="/signup" class="inline-flex w-full justify-center bg-slate-900 hover:bg-slate-800 text-white py-3 rounded-xl font-semibold transition">Invest Now</a>
+                            <a href="#" onclick="goToDeposit('Piggery Expansion')" class="inline-flex w-full justify-center bg-slate-900 hover:bg-slate-800 text-white py-3 rounded-xl font-semibold transition">Invest Now</a>
                         </div>
                     </article>
 
@@ -358,10 +358,11 @@
                                 </div>
                             </div>
                             <p class="text-green-700 font-semibold mb-5">7x return in 10 days</p>
-                            <a href="/signup" class="inline-flex w-full justify-center bg-slate-900 hover:bg-slate-800 text-white py-3 rounded-xl font-semibold transition">Invest Now</a>
+                            <a href="#" onclick="goToDeposit('Greenhouse Vegetables')" class="inline-flex w-full justify-center bg-slate-900 hover:bg-slate-800 text-white py-3 rounded-xl font-semibold transition">Invest Now</a>
                         </div>
                     </article>
                 </div>
+<!-- ...existing code... -->
             </div>
         </section>
 
@@ -616,6 +617,36 @@
         document.getElementById('mobile-logout-btn').addEventListener('click', logout);
         loadAuthState();
         loadRecentActivity();
+        // Make goToDeposit globally available
+        window.goToDeposit = function(plan) {
+            // Find the clicked button and add loading effect
+            const event = window.event;
+            const btn = event ? event.currentTarget : null;
+            if (btn) {
+                btn.disabled = true;
+                btn.classList.add('opacity-60');
+                btn.innerHTML = '<span class="animate-pulse">Loading...</span>';
+            }
+            // Show popup message
+            const msg = document.createElement('div');
+            msg.textContent = 'Deposit to begin your investment.';
+            msg.style.position = 'fixed';
+            msg.style.top = '30%';
+            msg.style.left = '50%';
+            msg.style.transform = 'translate(-50%, -50%)';
+            msg.style.background = '#2563eb';
+            msg.style.color = 'white';
+            msg.style.padding = '1.5rem 2.5rem';
+            msg.style.borderRadius = '1rem';
+            msg.style.fontSize = '1.25rem';
+            msg.style.zIndex = 9999;
+            msg.style.boxShadow = '0 4px 24px rgba(0,0,0,0.15)';
+            document.body.appendChild(msg);
+            setTimeout(() => {
+                msg.remove();
+                window.location.href = `deposit.html?plan=${encodeURIComponent(plan)}`;
+            }, 1200);
+        }
     </script>
 </body>
 </html>
