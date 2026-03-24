@@ -1039,7 +1039,8 @@ app.post('/api/login', loginRateLimiter, (req, res) => {
   const identifier = String(email || '').trim();
   const normalizedEmail = normalizeEmail(identifier);
   const [phoneVariant1, phoneVariant2, phoneVariant3] = getPhoneLookupVariants(identifier);
-  const rawPassword = String(password || '').trim(); // TRIMMED PASSWORD
+  const rawPassword = String(password || '');
+  const trimmedPassword = rawPassword.trim();
   
   // Validate input
   if (!identifier || !rawPassword) {
@@ -1077,10 +1078,14 @@ app.post('/api/login', loginRateLimiter, (req, res) => {
         return res.json({ success: false, message: 'Invalid credentials or not approved' });
       }
 
-      // Verify password
-      const isPasswordValid = verifyPassword(rawPassword, row.password);
+      const rawPasswordValid = verifyPassword(rawPassword, row.password);
+      const trimmedPasswordValid = !rawPasswordValid
+        && trimmedPassword
+        && trimmedPassword !== rawPassword
+        && verifyPassword(trimmedPassword, row.password);
+      const passwordUsed = rawPasswordValid ? rawPassword : (trimmedPasswordValid ? trimmedPassword : '');
       
-      if (!isPasswordValid) {
+      if (!passwordUsed) {
         writeSecurityLog('login_failed_invalid_password', req, { userId: row.id, email: row.email });
         db.run(`INSERT INTO login_history (user_id, email, ip_address, success, reason) VALUES (?, ?, ?, ?, ?)`,
           [row.id, row.email, getClientIp(req), 0, 'Invalid password']);
@@ -1090,7 +1095,7 @@ app.post('/api/login', loginRateLimiter, (req, res) => {
 
       // Password upgrade if needed
       if (!isBcryptHash(row.password)) {
-        const upgradedHash = hashPassword(rawPassword);
+        const upgradedHash = hashPassword(passwordUsed);
         db.run(`UPDATE users SET password = ? WHERE id = ?`, [upgradedHash, row.id], (updateErr) => {
           if (updateErr) {
             console.error('Password migration error:', updateErr);
