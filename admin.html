@@ -57,6 +57,49 @@
             </div>
 
             <div class="bg-white rounded-lg shadow p-6 mt-6">
+                <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-4">
+                    <div>
+                        <h2 class="text-xl font-bold">Live Chat Support Console</h2>
+                        <p class="text-sm text-gray-600">Monitor AI conversations, take over chats, and reply as human support.</p>
+                    </div>
+                    <label class="inline-flex items-center gap-2 text-sm font-semibold text-gray-700">
+                        <input id="support-availability-toggle" type="checkbox" class="h-4 w-4">
+                        Human agent online
+                    </label>
+                </div>
+
+                <div class="grid lg:grid-cols-3 gap-4">
+                    <div class="lg:col-span-1 border border-gray-200 rounded p-3">
+                        <div class="flex items-center justify-between mb-2">
+                            <h3 class="font-semibold">Conversations</h3>
+                            <button onclick="loadChatConversations()" class="bg-blue-800 text-white text-xs px-3 py-1 rounded">Refresh</button>
+                        </div>
+                        <div id="chat-conversations-list" class="space-y-2 max-h-80 overflow-y-auto"></div>
+                    </div>
+                    <div class="lg:col-span-2 border border-gray-200 rounded p-3">
+                        <div class="flex flex-wrap items-center gap-2 mb-3">
+                            <button id="chat-takeover-btn" onclick="takeOverSelectedChat()" class="bg-amber-600 text-white px-3 py-1.5 rounded text-sm">Take Over</button>
+                            <label class="inline-flex items-center gap-1 text-sm text-gray-700">
+                                <input id="chat-mark-resolved" type="checkbox" class="h-4 w-4">
+                                Mark resolved after reply
+                            </label>
+                        </div>
+                        <div id="chat-admin-messages" class="h-64 overflow-y-auto border border-gray-200 rounded p-3 bg-slate-50 mb-3"></div>
+                        <div class="flex gap-2">
+                            <input id="chat-admin-reply" type="text" maxlength="1000" placeholder="Type support reply..." class="flex-1 border border-gray-300 rounded px-3 py-2 text-sm">
+                            <button id="chat-admin-send-btn" onclick="sendAdminChatReply()" class="bg-green-600 text-white px-4 py-2 rounded text-sm">Reply</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-4 border border-gray-200 rounded p-3 bg-slate-50">
+                    <h3 class="font-semibold mb-2">Chat Analytics (last 30 days)</h3>
+                    <div id="chat-analytics-summary" class="text-sm text-gray-700 mb-2">Loading...</div>
+                    <div id="chat-analytics-trends" class="text-sm text-gray-700"></div>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-lg shadow p-6 mt-6">
                 <h2 class="text-xl font-bold mb-4">Security Logs</h2>
                 <div class="flex flex-col md:flex-row gap-3 mb-4">
                     <button onclick="loadSecurityLogs()" class="bg-blue-800 text-white px-4 py-2 rounded">Refresh Logs</button>
@@ -70,6 +113,21 @@
     </div>
 
     <script>
+        const adminChatState = {
+            selectedConversationId: null,
+            poller: null,
+            conversations: []
+        };
+
+        function escapeHtml(value) {
+            return String(value || '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
         function formatCurrency(amount) {
             return `GH₵ ${Number(amount || 0).toFixed(2)}`;
         }
@@ -400,6 +458,232 @@
             });
         }
 
+        function renderAdminConversationList() {
+            const container = document.getElementById('chat-conversations-list');
+            const selectedId = Number(adminChatState.selectedConversationId || 0);
+
+            if (!adminChatState.conversations.length) {
+                container.innerHTML = '<p class="text-sm text-gray-500">No chat conversations yet.</p>';
+                return;
+            }
+
+            container.innerHTML = adminChatState.conversations.map((item) => {
+                const activeClass = Number(item.id) === selectedId
+                    ? 'border-blue-500 bg-blue-50'
+                    : 'border-gray-200 bg-white';
+                const statusClass = item.status === 'resolved'
+                    ? 'text-green-700 bg-green-50 border-green-200'
+                    : item.status === 'human'
+                        ? 'text-amber-700 bg-amber-50 border-amber-200'
+                        : 'text-blue-700 bg-blue-50 border-blue-200';
+                const when = item.lastMessageAt ? new Date(item.lastMessageAt).toLocaleString() : '-';
+
+                return `
+                    <button onclick="openAdminConversation(${item.id})" class="w-full text-left border rounded p-2 ${activeClass}">
+                        <p class="text-sm font-semibold text-slate-800">${escapeHtml(item.userName || 'User')} (${escapeHtml(item.userIdentifier || '-')})</p>
+                        <p class="text-xs text-slate-600 mt-1">${escapeHtml(item.lastMessagePreview || 'No messages')}</p>
+                        <div class="mt-1 flex items-center justify-between">
+                            <span class="inline-flex text-[11px] border rounded-full px-2 py-0.5 ${statusClass}">${escapeHtml(item.status || 'bot')}</span>
+                            <span class="text-[11px] text-slate-500">${escapeHtml(when)}</span>
+                        </div>
+                    </button>
+                `;
+            }).join('');
+        }
+
+        function renderAdminConversationMessages(messages) {
+            const container = document.getElementById('chat-admin-messages');
+            if (!messages || !messages.length) {
+                container.innerHTML = '<p class="text-sm text-gray-500">Select a conversation to view messages.</p>';
+                return;
+            }
+
+            container.innerHTML = messages.map((item) => {
+                const sender = String(item.senderType || '').toLowerCase();
+                const wrapperClass = sender === 'user' ? 'justify-start' : 'justify-end';
+                const bubbleClass = sender === 'user'
+                    ? 'bg-white border border-gray-200 text-slate-800'
+                    : sender === 'agent'
+                        ? 'bg-green-600 text-white'
+                        : sender === 'bot'
+                            ? 'bg-blue-700 text-white'
+                            : 'bg-amber-50 border border-amber-200 text-amber-900';
+                const label = item.senderName || (sender === 'user' ? 'User' : sender === 'agent' ? 'Support Agent' : sender === 'bot' ? 'Agro Assistant' : 'System');
+                const timeLabel = item.createdAt ? new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+
+                return `
+                    <div class="flex ${wrapperClass} mb-2">
+                        <div class="max-w-[85%] rounded-lg px-3 py-2 text-sm ${bubbleClass}">
+                            <p class="text-[11px] opacity-80 font-semibold mb-1">${escapeHtml(label)}</p>
+                            <p>${escapeHtml(item.message || '')}</p>
+                            <p class="text-[10px] opacity-75 mt-1 text-right">${escapeHtml(timeLabel)}</p>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function loadChatConversations() {
+            fetch('/api/admin/chat/conversations')
+            .then(response => response.json())
+            .then((data) => {
+                if (!data.success) {
+                    throw new Error(data.message || 'Failed to load chat conversations.');
+                }
+
+                adminChatState.conversations = data.conversations || [];
+                document.getElementById('support-availability-toggle').checked = Boolean(data.agentOnline);
+                renderAdminConversationList();
+
+                if (!adminChatState.selectedConversationId && adminChatState.conversations.length) {
+                    openAdminConversation(adminChatState.conversations[0].id);
+                }
+            })
+            .catch((error) => {
+                console.error('Error:', error);
+                document.getElementById('chat-conversations-list').innerHTML = '<p class="text-sm text-red-500">Failed to load chat conversations.</p>';
+            });
+        }
+
+        function openAdminConversation(conversationId) {
+            adminChatState.selectedConversationId = Number(conversationId || 0);
+            renderAdminConversationList();
+
+            fetch(`/api/admin/chat/messages/${adminChatState.selectedConversationId}`)
+            .then(response => response.json())
+            .then((data) => {
+                if (!data.success) {
+                    throw new Error(data.message || 'Failed to load chat messages.');
+                }
+
+                renderAdminConversationMessages(data.messages || []);
+            })
+            .catch((error) => {
+                console.error('Error:', error);
+                document.getElementById('chat-admin-messages').innerHTML = '<p class="text-sm text-red-500">Failed to load chat messages.</p>';
+            });
+        }
+
+        function setSupportAvailability(online) {
+            fetch('/api/admin/chat/availability', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ online: Boolean(online) })
+            })
+            .then(response => response.json())
+            .then((data) => {
+                if (!data.success) {
+                    throw new Error(data.message || 'Failed to update availability.');
+                }
+                loadChatConversations();
+            })
+            .catch((error) => {
+                console.error('Error:', error);
+                alert('Failed to update support availability.');
+            });
+        }
+
+        function takeOverSelectedChat() {
+            const conversationId = Number(adminChatState.selectedConversationId || 0);
+            if (!conversationId) {
+                alert('Select a conversation first.');
+                return;
+            }
+
+            fetch(`/api/admin/chat/takeover/${conversationId}`, { method: 'POST' })
+            .then(response => response.json())
+            .then((data) => {
+                if (!data.success) {
+                    throw new Error(data.message || 'Failed to take over chat.');
+                }
+                loadChatConversations();
+                openAdminConversation(conversationId);
+            })
+            .catch((error) => {
+                console.error('Error:', error);
+                alert('Failed to take over chat.');
+            });
+        }
+
+        function sendAdminChatReply() {
+            const conversationId = Number(adminChatState.selectedConversationId || 0);
+            const input = document.getElementById('chat-admin-reply');
+            const sendBtn = document.getElementById('chat-admin-send-btn');
+            const message = String(input.value || '').trim();
+            const markResolved = document.getElementById('chat-mark-resolved').checked;
+
+            if (!conversationId) {
+                alert('Select a conversation first.');
+                return;
+            }
+
+            if (!message) {
+                return;
+            }
+
+            sendBtn.disabled = true;
+            fetch(`/api/admin/chat/reply/${conversationId}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message, markResolved })
+            })
+            .then(response => response.json())
+            .then((data) => {
+                if (!data.success) {
+                    throw new Error(data.message || 'Failed to send reply.');
+                }
+                input.value = '';
+                document.getElementById('chat-mark-resolved').checked = false;
+                openAdminConversation(conversationId);
+                loadChatConversations();
+                loadChatAnalytics();
+            })
+            .catch((error) => {
+                console.error('Error:', error);
+                alert('Failed to send chat reply.');
+            })
+            .finally(() => {
+                sendBtn.disabled = false;
+            });
+        }
+
+        function loadChatAnalytics() {
+            fetch('/api/admin/chat/analytics')
+            .then(response => response.json())
+            .then((data) => {
+                if (!data.success) {
+                    throw new Error(data.message || 'Failed to load chat analytics.');
+                }
+
+                const summary = data.summary || {};
+                const feedback = data.feedback || {};
+                document.getElementById('chat-analytics-summary').innerHTML = `
+                    Total conversations: <strong>${Number(summary.totalConversations || 0)}</strong> ·
+                    Resolved: <strong>${Number(summary.resolvedConversations || 0)}</strong> ·
+                    Human-handled: <strong>${Number(summary.humanConversations || 0)}</strong> ·
+                    Bot-handled: <strong>${Number(summary.botConversations || 0)}</strong> ·
+                    Avg rating: <strong>${Number(feedback.averageRating || 0).toFixed(2)}</strong> (${Number(feedback.totalFeedback || 0)} ratings)
+                `;
+
+                const trends = data.trends || [];
+                if (!trends.length) {
+                    document.getElementById('chat-analytics-trends').innerHTML = 'No issue trend data yet.';
+                    return;
+                }
+
+                document.getElementById('chat-analytics-trends').innerHTML = trends
+                    .map((trend) => `${escapeHtml(trend.issue_category)}: <strong>${Number(trend.total || 0)}</strong>`)
+                    .join(' · ');
+            })
+            .catch((error) => {
+                console.error('Error:', error);
+                document.getElementById('chat-analytics-summary').innerHTML = '<span class="text-red-500">Failed to load analytics.</span>';
+                document.getElementById('chat-analytics-trends').innerHTML = '';
+            });
+        }
+
         function loadSecurityLogs() {
             fetch('/api/admin/security-logs?limit=200')
             .then(response => response.json())
@@ -455,9 +739,33 @@
             loadPendingUsers();
             loadPendingDeposits();
             loadWithdrawalRequests();
+            loadChatConversations();
+            loadChatAnalytics();
             loadSecurityLogs();
             document.getElementById('pending-deposits-filter').addEventListener('input', loadPendingDeposits);
             document.getElementById('security-logs-filter').addEventListener('input', loadSecurityLogs);
+            document.getElementById('support-availability-toggle').addEventListener('change', (event) => {
+                setSupportAvailability(event.target.checked);
+            });
+            document.getElementById('chat-admin-reply').addEventListener('keydown', (event) => {
+                if (event.key === 'Enter' && !event.shiftKey) {
+                    event.preventDefault();
+                    sendAdminChatReply();
+                }
+            });
+
+            adminChatState.poller = window.setInterval(() => {
+                loadChatConversations();
+                if (adminChatState.selectedConversationId) {
+                    openAdminConversation(adminChatState.selectedConversationId);
+                }
+            }, 7000);
+        });
+
+        window.addEventListener('beforeunload', () => {
+            if (adminChatState.poller) {
+                window.clearInterval(adminChatState.poller);
+            }
         });
     </script>
 </body>

@@ -37,7 +37,14 @@ const OTP_RESEND_DELAY_MS = 60 * 1000;
 const BCRYPT_ROUNDS = Number(process.env.BCRYPT_ROUNDS || 12);
 const SESSION_DB_NAME = process.env.SESSION_DB_NAME || 'sessions.db';
 const DUPLICATE_IDENTIFIER_MESSAGE = 'This email or phone number has already been used. Please use a different one or log in instead.';
+const CHAT_CACHE_TTL_MS = Number(process.env.CHAT_CACHE_TTL_MS || 15000);
+const CHAT_DEFAULT_AGENT_NAME = process.env.SUPPORT_AGENT_NAME || 'Support Agent';
+const CHAT_ENCRYPTION_SOURCE = String(process.env.CHAT_ENCRYPTION_KEY || SESSION_SECRET || '').trim();
+const CHAT_CIPHER_ALGORITHM = 'aes-256-gcm';
+const CHAT_FALLBACK_REPLY = 'Thanks for reaching out. I could not fully resolve this yet, so I have routed your chat to human support.';
 const pendingSignupOtps = new Map();
+const chatMessageCache = new Map();
+const chatEncryptionKey = crypto.createHash('sha256').update(CHAT_ENCRYPTION_SOURCE).digest();
 
 function resolveStoragePath(targetPath) {
   if (!targetPath) {
@@ -93,6 +100,236 @@ function backupExistingDatabase() {
 }
 
 backupExistingDatabase();
+
+function encryptChatMessage(plainText) {
+  const text = String(plainText || '');
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv(CHAT_CIPHER_ALGORITHM, chatEncryptionKey, iv);
+  const encrypted = Buffer.concat([cipher.update(text, 'utf8'), cipher.final()]);
+  const authTag = cipher.getAuthTag();
+  return `${iv.toString('base64')}.${authTag.toString('base64')}.${encrypted.toString('base64')}`;
+}
+
+function decryptChatMessage(payload) {
+  const raw = String(payload || '');
+  if (!raw || !raw.includes('.')) {
+    return '';
+  }
+
+  const parts = raw.split('.');
+  if (parts.length !== 3) {
+    return '';
+  }
+
+  try {
+    const iv = Buffer.from(parts[0], 'base64');
+    const authTag = Buffer.from(parts[1], 'base64');
+    const ciphertext = Buffer.from(parts[2], 'base64');
+    const decipher = crypto.createDecipheriv(CHAT_CIPHER_ALGORITHM, chatEncryptionKey, iv);
+    decipher.setAuthTag(authTag);
+    const decrypted = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
+    return decrypted.toString('utf8');
+  } catch (error) {
+    return '';
+  }
+}
+
+function getChatCacheKey(userId) {
+  return `chat:${Number(userId || 0)}`;
+}
+
+function getCachedChatMessages(userId) {
+  const cacheKey = getChatCacheKey(userId);
+  const cached = chatMessageCache.get(cacheKey);
+  if (!cached) {
+    return null;
+  }
+
+  if ((Date.now() - cached.timestamp) > CHAT_CACHE_TTL_MS) {
+    chatMessageCache.delete(cacheKey);
+    return null;
+  }
+
+  return cached.payload;
+}
+
+function setCachedChatMessages(userId, payload) {
+  const cacheKey = getChatCacheKey(userId);
+  chatMessageCache.set(cacheKey, {
+    timestamp: Date.now(),
+    payload
+  });
+}
+
+function clearCachedChatMessages(userId) {
+  chatMessageCache.delete(getChatCacheKey(userId));
+}
+
+function classifyChatIssue(messageText) {
+  const message = String(messageText || '').toLowerCase();
+  if (!message) return 'general';
+  if (/(login|log in|password|account|signin|sign in)/.test(message)) return 'login';
+  if (/(pay|payment|momo|mobile money|deposit|reference|charge|paystack)/.test(message)) return 'payment';
+  if (/(withdraw|payout|cashout|cash out|matured)/.test(message)) return 'withdrawal';
+  if (/(error|bug|issue|problem|fail|failed|not work|cannot|can't)/.test(message)) return 'technical';
+  if (/(referral|bonus|invite)/.test(message)) return 'referral';
+  return 'general';
+}
+
+function shouldEscalateToHuman(messageText) {
+  const message = String(messageText || '').toLowerCase();
+  if (!message) return false;
+  return /(human|agent|person|speak to|talk to|not resolved|still issue|urgent|complaint|angry|scam|fraud|lawsuit)/.test(message);
+}
+
+function generateBotReply(messageText) {
+  const message = String(messageText || '').toLowerCase();
+
+  if (/(login|log in|password|account locked|can't log|cannot log)/.test(message)) {
+    return 'For login issues, confirm your email/phone and password exactly as registered. If it still fails, tell me the exact error and we will route you to human support.';
+  }
+
+  if (/(deposit|payment|momo|mobile money|paystack|reference)/.test(message)) {
+    return 'Deposits activate automatically after successful payment confirmation. If your prompt failed or no confirmation appears, share your payment reference and mobile number for manual review.';
+  }
+
+  if (/(withdraw|payout|cashout|cash out)/.test(message)) {
+    return 'Withdrawals are requested from your dashboard once the 7-day period is complete. A human admin confirms manual payout after reviewing your request details.';
+  }
+
+  if (/(how long|when|7 day|seven day|mature)/.test(message)) {
+    return 'Each plan matures in 7 days from approval time. You can track progress in your dashboard deposit history.';
+  }
+
+  if (/(hello|hi|hey)/.test(message)) {
+    return 'Hello! I can help with login, deposits, withdrawal timing, and payment checks. Tell me what you need.';
+  }
+
+  return CHAT_FALLBACK_REPLY;
+}
+
+function getSupportAvailability(callback) {
+  db.get(
+    `SELECT setting_value FROM support_settings WHERE setting_key = 'agent_online'`,
+    [],
+    (err, row) => {
+      if (err) {
+        return callback(err);
+      }
+      const isOnline = row ? Number(row.setting_value || 0) === 1 : false;
+      callback(null, isOnline);
+    }
+  );
+}
+
+function ensureChatConversation(userId, callback) {
+  db.get(
+    `SELECT c.id, c.user_id, c.status, c.assigned_agent, c.last_user_message_at, c.last_agent_message_at,
+            c.last_message_at, c.created_at, c.updated_at,
+            u.email AS user_email, u.phone AS user_phone, u.name AS user_name
+     FROM chat_conversations c
+     INNER JOIN users u ON u.id = c.user_id
+     WHERE c.user_id = ?`,
+    [userId],
+    (findErr, row) => {
+      if (findErr) {
+        return callback(findErr);
+      }
+
+      if (row) {
+        const identifier = String(row.user_email || row.user_phone || '').trim();
+        return callback(null, { ...row, user_identifier: identifier });
+      }
+
+      db.get(`SELECT id, email, phone, name FROM users WHERE id = ?`, [userId], (userErr, userRow) => {
+        if (userErr) {
+          return callback(userErr);
+        }
+
+        if (!userRow) {
+          return callback(new Error('User not found for chat.'));
+        }
+
+        const identifier = String(userRow.email || userRow.phone || '').trim();
+        db.run(
+          `INSERT INTO chat_conversations (user_id, user_identifier, status, assigned_agent, last_message_at)
+           VALUES (?, ?, 'bot', NULL, CURRENT_TIMESTAMP)`,
+          [userId, identifier],
+          function(insertErr) {
+            if (insertErr) {
+              return callback(insertErr);
+            }
+
+            callback(null, {
+              id: this.lastID,
+              user_id: userId,
+              status: 'bot',
+              assigned_agent: null,
+              user_email: userRow.email,
+              user_phone: userRow.phone,
+              user_name: userRow.name,
+              user_identifier: identifier,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            });
+          }
+        );
+      });
+    }
+  );
+}
+
+function insertChatMessage(conversationId, senderType, plaintextMessage, senderName, callback) {
+  const encryptedMessage = encryptChatMessage(plaintextMessage);
+  db.run(
+    `INSERT INTO chat_messages (conversation_id, sender_type, sender_name, encrypted_message)
+     VALUES (?, ?, ?, ?)`,
+    [conversationId, senderType, senderName || null, encryptedMessage],
+    function(insertErr) {
+      if (insertErr) {
+        return callback(insertErr);
+      }
+
+      callback(null, this.lastID);
+    }
+  );
+}
+
+function loadConversationMessages(conversationId, userId, callback) {
+  const cached = getCachedChatMessages(userId);
+  if (cached && Number(cached.conversationId) === Number(conversationId)) {
+    return callback(null, cached.messages);
+  }
+
+  db.all(
+    `SELECT id, conversation_id, sender_type, sender_name, encrypted_message, created_at
+     FROM chat_messages
+     WHERE conversation_id = ?
+     ORDER BY id ASC`,
+    [conversationId],
+    (err, rows) => {
+      if (err) {
+        return callback(err);
+      }
+
+      const messages = (rows || []).map((row) => ({
+        id: row.id,
+        conversationId: row.conversation_id,
+        senderType: row.sender_type,
+        senderName: row.sender_name,
+        message: decryptChatMessage(row.encrypted_message),
+        createdAt: row.created_at
+      }));
+
+      setCachedChatMessages(userId, {
+        conversationId: Number(conversationId),
+        messages
+      });
+
+      callback(null, messages);
+    }
+  );
+}
 
 function getClientIp(req) {
   const forwarded = req.headers['x-forwarded-for'];
@@ -390,6 +627,69 @@ db.serialize(() => {
     FOREIGN KEY(deposit_id) REFERENCES deposits(id),
     FOREIGN KEY(user_id) REFERENCES users(id)
   )`);
+
+  db.run(`CREATE TABLE IF NOT EXISTS chat_conversations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL UNIQUE,
+    user_identifier TEXT NOT NULL,
+    status TEXT DEFAULT 'bot',
+    assigned_agent TEXT,
+    last_user_message_at DATETIME,
+    last_agent_message_at DATETIME,
+    last_message_at DATETIME,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(user_id) REFERENCES users(id)
+  )`);
+
+  db.run(`CREATE TABLE IF NOT EXISTS chat_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    conversation_id INTEGER NOT NULL,
+    sender_type TEXT NOT NULL,
+    sender_name TEXT,
+    encrypted_message TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(conversation_id) REFERENCES chat_conversations(id)
+  )`);
+
+  db.run(`CREATE TABLE IF NOT EXISTS chat_issue_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    conversation_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    issue_category TEXT NOT NULL,
+    source TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(conversation_id) REFERENCES chat_conversations(id),
+    FOREIGN KEY(user_id) REFERENCES users(id)
+  )`);
+
+  db.run(`CREATE TABLE IF NOT EXISTS chat_feedback (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    conversation_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    rating INTEGER NOT NULL,
+    comment TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(conversation_id, user_id),
+    FOREIGN KEY(conversation_id) REFERENCES chat_conversations(id),
+    FOREIGN KEY(user_id) REFERENCES users(id)
+  )`);
+
+  db.run(`CREATE TABLE IF NOT EXISTS support_settings (
+    setting_key TEXT PRIMARY KEY,
+    setting_value TEXT NOT NULL,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`);
+
+  db.run(
+    `INSERT INTO support_settings (setting_key, setting_value)
+     SELECT 'agent_online', '0'
+     WHERE NOT EXISTS (SELECT 1 FROM support_settings WHERE setting_key = 'agent_online')`
+  );
+
+  db.run(`CREATE INDEX IF NOT EXISTS idx_chat_messages_conversation_id ON chat_messages(conversation_id, id)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_chat_conversations_last_message ON chat_conversations(last_message_at DESC, id DESC)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_chat_issue_events_category ON chat_issue_events(issue_category, created_at DESC)`);
 
   // Add mobile_number column if it doesn't exist (for existing databases)
   db.run(`PRAGMA table_info(deposits)`, [], (err, columns) => {
@@ -1306,6 +1606,294 @@ app.get('/api/referrals', requireAuth, (req, res) => {
   });
 });
 
+app.get('/api/chat/session', requireAuth, (req, res) => {
+  ensureChatConversation(req.session.user.id, (conversationErr, conversation) => {
+    if (conversationErr) {
+      console.error('Chat session error:', conversationErr);
+      return res.status(500).json({ success: false, message: 'Failed to load chat session.' });
+    }
+
+    loadConversationMessages(conversation.id, req.session.user.id, (messagesErr, messages) => {
+      if (messagesErr) {
+        console.error('Chat messages load error:', messagesErr);
+        return res.status(500).json({ success: false, message: 'Failed to load chat messages.' });
+      }
+
+      const latestMessage = messages.length ? messages[messages.length - 1] : null;
+      getSupportAvailability((availabilityErr, agentOnline) => {
+        if (availabilityErr) {
+          console.error('Support availability error:', availabilityErr);
+        }
+
+        db.get(
+          `SELECT rating, comment, created_at
+           FROM chat_feedback
+           WHERE conversation_id = ? AND user_id = ?`,
+          [conversation.id, req.session.user.id],
+          (feedbackErr, feedbackRow) => {
+            if (feedbackErr) {
+              console.error('Chat feedback lookup error:', feedbackErr);
+            }
+
+            return res.json({
+              success: true,
+              conversation: {
+                id: conversation.id,
+                status: conversation.status,
+                assignedAgent: conversation.assigned_agent,
+                userIdentifier: conversation.user_identifier,
+                agentOnline: Boolean(agentOnline),
+                latestMessageId: latestMessage ? latestMessage.id : 0
+              },
+              feedback: feedbackRow
+                ? {
+                  rating: Number(feedbackRow.rating || 0),
+                  comment: feedbackRow.comment || '',
+                  createdAt: feedbackRow.created_at
+                }
+                : null,
+              messages
+            });
+          }
+        );
+      });
+    });
+  });
+});
+
+app.post('/api/chat/message', requireAuth, (req, res) => {
+  const message = String(req.body?.message || '').trim();
+  if (!message) {
+    return res.status(400).json({ success: false, message: 'Message is required.' });
+  }
+  if (message.length > 1000) {
+    return res.status(400).json({ success: false, message: 'Message is too long.' });
+  }
+
+  ensureChatConversation(req.session.user.id, (conversationErr, conversation) => {
+    if (conversationErr) {
+      console.error('Conversation lookup error:', conversationErr);
+      return res.status(500).json({ success: false, message: 'Unable to open support chat.' });
+    }
+
+    const issueCategory = classifyChatIssue(message);
+    insertChatMessage(conversation.id, 'user', message, req.session.user.name || null, (insertUserErr, userMessageId) => {
+      if (insertUserErr) {
+        console.error('User chat insert error:', insertUserErr);
+        return res.status(500).json({ success: false, message: 'Failed to send message.' });
+      }
+
+      db.run(
+        `INSERT INTO chat_issue_events (conversation_id, user_id, issue_category, source)
+         VALUES (?, ?, ?, 'user')`,
+        [conversation.id, req.session.user.id, issueCategory],
+        () => {}
+      );
+
+      db.run(
+        `UPDATE chat_conversations
+         SET user_identifier = ?,
+             last_user_message_at = CURRENT_TIMESTAMP,
+             last_message_at = CURRENT_TIMESTAMP,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = ?`,
+        [String(req.session.user.email || req.session.user.phone || ''), conversation.id]
+      );
+
+      const needsEscalation = shouldEscalateToHuman(message) || generateBotReply(message) === CHAT_FALLBACK_REPLY;
+      getSupportAvailability((availabilityErr, agentOnline) => {
+        if (availabilityErr) {
+          console.error('Support availability read error:', availabilityErr);
+        }
+
+        const resolvedAgentOnline = Boolean(agentOnline);
+        const conversationMode = String(conversation.status || 'bot').toLowerCase();
+
+        if (conversationMode === 'human') {
+          if (!resolvedAgentOnline) {
+            const offlineMessage = 'Support is currently offline. Your message has been saved and a human agent will reply when available.';
+            insertChatMessage(conversation.id, 'system', offlineMessage, 'System', (offlineErr) => {
+              if (offlineErr) {
+                console.error('Offline chat insert error:', offlineErr);
+              }
+              clearCachedChatMessages(req.session.user.id);
+              return res.json({
+                success: true,
+                handoffRequested: true,
+                agentOnline: false,
+                latestMessageId: userMessageId,
+                message: 'Message saved. Human support is currently offline.'
+              });
+            });
+            return;
+          }
+
+          clearCachedChatMessages(req.session.user.id);
+          return res.json({
+            success: true,
+            handoffRequested: true,
+            agentOnline: true,
+            latestMessageId: userMessageId,
+            message: 'Message sent. A human support agent will reply shortly.'
+          });
+        }
+
+        if (needsEscalation) {
+          db.run(
+            `UPDATE chat_conversations
+             SET status = 'human', updated_at = CURRENT_TIMESTAMP
+             WHERE id = ?`,
+            [conversation.id]
+          );
+
+          const handoffMessage = resolvedAgentOnline
+            ? 'I am handing this over to a human support agent now. Please hold on.'
+            : 'I have routed this to human support. Agents are currently offline, but your chat is saved and will be handled once they are online.';
+
+          insertChatMessage(conversation.id, 'bot', handoffMessage, 'Agro Assistant', (handoffErr, handoffMessageId) => {
+            if (handoffErr) {
+              console.error('Handoff message insert error:', handoffErr);
+            }
+
+            db.run(
+              `UPDATE chat_conversations
+               SET last_agent_message_at = CURRENT_TIMESTAMP,
+                   last_message_at = CURRENT_TIMESTAMP,
+                   updated_at = CURRENT_TIMESTAMP
+               WHERE id = ?`,
+              [conversation.id]
+            );
+
+            clearCachedChatMessages(req.session.user.id);
+            return res.json({
+              success: true,
+              handoffRequested: true,
+              agentOnline: resolvedAgentOnline,
+              latestMessageId: handoffMessageId || userMessageId,
+              message: handoffMessage
+            });
+          });
+          return;
+        }
+
+        const botReply = generateBotReply(message);
+        insertChatMessage(conversation.id, 'bot', botReply, 'Agro Assistant', (botErr, botMessageId) => {
+          if (botErr) {
+            console.error('Bot chat insert error:', botErr);
+            return res.status(500).json({ success: false, message: 'Failed to generate bot response.' });
+          }
+
+          db.run(
+            `UPDATE chat_conversations
+             SET status = 'bot',
+                 last_agent_message_at = CURRENT_TIMESTAMP,
+                 last_message_at = CURRENT_TIMESTAMP,
+                 updated_at = CURRENT_TIMESTAMP
+             WHERE id = ?`,
+            [conversation.id]
+          );
+
+          clearCachedChatMessages(req.session.user.id);
+          return res.json({
+            success: true,
+            handoffRequested: false,
+            agentOnline: resolvedAgentOnline,
+            latestMessageId: botMessageId,
+            message: botReply
+          });
+        });
+      });
+    });
+  });
+});
+
+app.get('/api/chat/messages', requireAuth, (req, res) => {
+  const sinceId = Math.max(0, Number(req.query.sinceId || 0));
+  ensureChatConversation(req.session.user.id, (conversationErr, conversation) => {
+    if (conversationErr) {
+      console.error('Chat poll conversation error:', conversationErr);
+      return res.status(500).json({ success: false, message: 'Could not load chat updates.' });
+    }
+
+    db.all(
+      `SELECT id, sender_type, sender_name, encrypted_message, created_at
+       FROM chat_messages
+       WHERE conversation_id = ? AND id > ?
+       ORDER BY id ASC`,
+      [conversation.id, sinceId],
+      (err, rows) => {
+        if (err) {
+          console.error('Chat poll error:', err);
+          return res.status(500).json({ success: false, message: 'Could not load chat updates.' });
+        }
+
+        const messages = (rows || []).map((row) => ({
+          id: row.id,
+          senderType: row.sender_type,
+          senderName: row.sender_name,
+          message: decryptChatMessage(row.encrypted_message),
+          createdAt: row.created_at
+        }));
+
+        if (messages.length) {
+          clearCachedChatMessages(req.session.user.id);
+        }
+
+        getSupportAvailability((availabilityErr, agentOnline) => {
+          if (availabilityErr) {
+            console.error('Support availability poll error:', availabilityErr);
+          }
+
+          res.json({
+            success: true,
+            conversation: {
+              id: conversation.id,
+              status: conversation.status,
+              assignedAgent: conversation.assigned_agent,
+              agentOnline: Boolean(agentOnline)
+            },
+            messages
+          });
+        });
+      }
+    );
+  });
+});
+
+app.post('/api/chat/rating', requireAuth, (req, res) => {
+  const rating = Number(req.body?.rating);
+  const comment = String(req.body?.comment || '').trim();
+
+  if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+    return res.status(400).json({ success: false, message: 'Rating must be from 1 to 5.' });
+  }
+
+  ensureChatConversation(req.session.user.id, (conversationErr, conversation) => {
+    if (conversationErr) {
+      console.error('Chat rating conversation error:', conversationErr);
+      return res.status(500).json({ success: false, message: 'Could not save rating.' });
+    }
+
+    db.run(
+      `INSERT INTO chat_feedback (conversation_id, user_id, rating, comment)
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT(conversation_id, user_id) DO UPDATE SET
+         rating = excluded.rating,
+         comment = excluded.comment,
+         created_at = CURRENT_TIMESTAMP`,
+      [conversation.id, req.session.user.id, rating, comment || null],
+      function(err) {
+        if (err) {
+          console.error('Chat rating save error:', err);
+          return res.status(500).json({ success: false, message: 'Failed to save rating.' });
+        }
+
+        return res.json({ success: true, message: 'Thanks for your feedback.' });
+      }
+    );
+  });
+});
+
 app.get('/api/admin/referrals', (req, res) => {
   db.all(
     `SELECT u.id, u.name, u.email, u.referral_code,
@@ -1695,6 +2283,247 @@ app.get('/api/admin/withdrawal-requests', (req, res) => {
   );
 });
 
+app.get('/api/admin/chat/conversations', (req, res) => {
+  db.all(
+    `SELECT c.id, c.user_id, c.user_identifier, c.status, c.assigned_agent,
+            c.last_user_message_at, c.last_agent_message_at, c.last_message_at,
+            c.created_at, c.updated_at,
+            u.name AS user_name, u.email AS user_email, u.phone AS user_phone,
+            (SELECT COUNT(*) FROM chat_messages cm WHERE cm.conversation_id = c.id) AS total_messages,
+            (SELECT encrypted_message FROM chat_messages cm2 WHERE cm2.conversation_id = c.id ORDER BY cm2.id DESC LIMIT 1) AS latest_encrypted_message,
+            (SELECT sender_type FROM chat_messages cm3 WHERE cm3.conversation_id = c.id ORDER BY cm3.id DESC LIMIT 1) AS latest_sender_type,
+            (SELECT created_at FROM chat_messages cm4 WHERE cm4.conversation_id = c.id ORDER BY cm4.id DESC LIMIT 1) AS latest_message_at
+     FROM chat_conversations c
+     INNER JOIN users u ON u.id = c.user_id
+     ORDER BY datetime(COALESCE(c.last_message_at, c.updated_at)) DESC, c.id DESC`,
+    [],
+    (err, rows) => {
+      if (err) {
+        console.error('Admin chat conversations error:', err);
+        return res.status(500).json({ success: false, message: 'Failed to load chat conversations.' });
+      }
+
+      getSupportAvailability((availabilityErr, agentOnline) => {
+        if (availabilityErr) {
+          console.error('Support availability admin error:', availabilityErr);
+        }
+
+        const conversations = (rows || []).map((row) => ({
+          id: row.id,
+          userId: row.user_id,
+          userName: row.user_name,
+          userEmail: row.user_email,
+          userPhone: row.user_phone,
+          userIdentifier: row.user_identifier,
+          status: row.status,
+          assignedAgent: row.assigned_agent,
+          totalMessages: Number(row.total_messages || 0),
+          lastMessageAt: row.latest_message_at || row.last_message_at || row.updated_at,
+          lastSenderType: row.latest_sender_type || null,
+          lastMessagePreview: decryptChatMessage(row.latest_encrypted_message || '').slice(0, 220)
+        }));
+
+        res.json({
+          success: true,
+          agentOnline: Boolean(agentOnline),
+          conversations
+        });
+      });
+    }
+  );
+});
+
+app.get('/api/admin/chat/messages/:conversationId', (req, res) => {
+  const conversationId = Number(req.params.conversationId);
+  if (!conversationId) {
+    return res.status(400).json({ success: false, message: 'Invalid conversation id.' });
+  }
+
+  db.all(
+    `SELECT cm.id, cm.sender_type, cm.sender_name, cm.encrypted_message, cm.created_at,
+            c.status, c.assigned_agent, c.user_identifier
+     FROM chat_messages cm
+     INNER JOIN chat_conversations c ON c.id = cm.conversation_id
+     WHERE cm.conversation_id = ?
+     ORDER BY cm.id ASC`,
+    [conversationId],
+    (err, rows) => {
+      if (err) {
+        console.error('Admin chat messages error:', err);
+        return res.status(500).json({ success: false, message: 'Failed to load chat messages.' });
+      }
+
+      const messages = (rows || []).map((row) => ({
+        id: row.id,
+        senderType: row.sender_type,
+        senderName: row.sender_name,
+        message: decryptChatMessage(row.encrypted_message),
+        createdAt: row.created_at
+      }));
+
+      const first = rows && rows[0] ? rows[0] : null;
+      return res.json({
+        success: true,
+        conversation: first
+          ? {
+            id: conversationId,
+            status: first.status,
+            assignedAgent: first.assigned_agent,
+            userIdentifier: first.user_identifier
+          }
+          : { id: conversationId },
+        messages
+      });
+    }
+  );
+});
+
+app.post('/api/admin/chat/availability', (req, res) => {
+  const isOnline = Boolean(req.body?.online);
+  db.run(
+    `INSERT INTO support_settings (setting_key, setting_value, updated_at)
+     VALUES ('agent_online', ?, CURRENT_TIMESTAMP)
+     ON CONFLICT(setting_key) DO UPDATE SET
+       setting_value = excluded.setting_value,
+       updated_at = CURRENT_TIMESTAMP`,
+    [isOnline ? '1' : '0'],
+    (err) => {
+      if (err) {
+        console.error('Support availability update error:', err);
+        return res.status(500).json({ success: false, message: 'Failed to update availability.' });
+      }
+      return res.json({ success: true, online: isOnline });
+    }
+  );
+});
+
+app.post('/api/admin/chat/takeover/:conversationId', (req, res) => {
+  const conversationId = Number(req.params.conversationId);
+  if (!conversationId) {
+    return res.status(400).json({ success: false, message: 'Invalid conversation id.' });
+  }
+
+  db.run(
+    `UPDATE chat_conversations
+     SET status = 'human', assigned_agent = ?, updated_at = CURRENT_TIMESTAMP
+     WHERE id = ?`,
+    [CHAT_DEFAULT_AGENT_NAME, conversationId],
+    function(err) {
+      if (err) {
+        console.error('Chat takeover update error:', err);
+        return res.status(500).json({ success: false, message: 'Failed to take over chat.' });
+      }
+
+      if (!this.changes) {
+        return res.status(404).json({ success: false, message: 'Conversation not found.' });
+      }
+
+      insertChatMessage(conversationId, 'system', 'A human support agent has joined this chat.', 'System', () => {});
+      return res.json({ success: true, message: 'Human takeover enabled.' });
+    }
+  );
+});
+
+app.post('/api/admin/chat/reply/:conversationId', (req, res) => {
+  const conversationId = Number(req.params.conversationId);
+  const message = String(req.body?.message || '').trim();
+  const markResolved = Boolean(req.body?.markResolved);
+
+  if (!conversationId || !message) {
+    return res.status(400).json({ success: false, message: 'Conversation id and reply message are required.' });
+  }
+
+  if (message.length > 1000) {
+    return res.status(400).json({ success: false, message: 'Reply is too long.' });
+  }
+
+  insertChatMessage(conversationId, 'agent', message, CHAT_DEFAULT_AGENT_NAME, (insertErr, messageId) => {
+    if (insertErr) {
+      console.error('Admin chat reply insert error:', insertErr);
+      return res.status(500).json({ success: false, message: 'Failed to send reply.' });
+    }
+
+    const nextStatus = markResolved ? 'resolved' : 'human';
+    db.run(
+      `UPDATE chat_conversations
+       SET status = ?, assigned_agent = ?,
+           last_agent_message_at = CURRENT_TIMESTAMP,
+           last_message_at = CURRENT_TIMESTAMP,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = ?`,
+      [nextStatus, CHAT_DEFAULT_AGENT_NAME, conversationId],
+      () => {}
+    );
+
+    db.get(`SELECT user_id FROM chat_conversations WHERE id = ?`, [conversationId], (findErr, convoRow) => {
+      if (!findErr && convoRow && convoRow.user_id) {
+        clearCachedChatMessages(convoRow.user_id);
+      }
+      return res.json({ success: true, messageId, status: nextStatus });
+    });
+  });
+});
+
+app.get('/api/admin/chat/analytics', (req, res) => {
+  db.all(
+    `SELECT issue_category, COUNT(*) AS total
+     FROM chat_issue_events
+     WHERE created_at >= datetime('now', '-30 day')
+     GROUP BY issue_category
+     ORDER BY total DESC`,
+    [],
+    (issueErr, issueRows) => {
+      if (issueErr) {
+        console.error('Chat analytics issue query error:', issueErr);
+        return res.status(500).json({ success: false, message: 'Failed to load chat analytics.' });
+      }
+
+      db.get(
+        `SELECT
+            COUNT(*) AS total_conversations,
+            SUM(CASE WHEN status = 'resolved' THEN 1 ELSE 0 END) AS resolved_conversations,
+            SUM(CASE WHEN status = 'human' THEN 1 ELSE 0 END) AS human_conversations,
+            SUM(CASE WHEN status = 'bot' THEN 1 ELSE 0 END) AS bot_conversations
+         FROM chat_conversations`,
+        [],
+        (summaryErr, summaryRow) => {
+          if (summaryErr) {
+            console.error('Chat analytics summary query error:', summaryErr);
+            return res.status(500).json({ success: false, message: 'Failed to load chat analytics.' });
+          }
+
+          db.get(
+            `SELECT ROUND(AVG(rating), 2) AS average_rating, COUNT(*) AS total_feedback
+             FROM chat_feedback`,
+            [],
+            (ratingErr, ratingRow) => {
+              if (ratingErr) {
+                console.error('Chat analytics rating query error:', ratingErr);
+                return res.status(500).json({ success: false, message: 'Failed to load chat analytics.' });
+              }
+
+              return res.json({
+                success: true,
+                trends: issueRows || [],
+                summary: {
+                  totalConversations: Number((summaryRow && summaryRow.total_conversations) || 0),
+                  resolvedConversations: Number((summaryRow && summaryRow.resolved_conversations) || 0),
+                  humanConversations: Number((summaryRow && summaryRow.human_conversations) || 0),
+                  botConversations: Number((summaryRow && summaryRow.bot_conversations) || 0)
+                },
+                feedback: {
+                  averageRating: Number((ratingRow && ratingRow.average_rating) || 0),
+                  totalFeedback: Number((ratingRow && ratingRow.total_feedback) || 0)
+                }
+              });
+            }
+          );
+        }
+      );
+    }
+  );
+});
+
 app.post('/api/admin/approve-withdrawal/:id', (req, res) => {
   const requestId = Number(req.params.id);
   const adminNote = String(req.body?.adminNote || '').trim();
@@ -1866,7 +2695,7 @@ app.post('/api/logout', (req, res) => {
       console.error('Logout error:', err);
       return res.json({ success: false, message: 'Failed to logout' });
     }
-    res.clearCookie('connect.sid');
+    res.clearCookie('agropluse.sid');
     res.json({ success: true, message: 'Logged out successfully' });
   });
 });
