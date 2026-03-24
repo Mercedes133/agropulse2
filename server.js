@@ -18,17 +18,27 @@ const PORT = process.env.PORT || 3000;
 const DATABASE_PATH = process.env.DATABASE_PATH || './users.db';
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 const SESSION_SECRET = process.env.SESSION_SECRET || (!IS_PRODUCTION ? 'agropluse_dev_secret_change_me' : '');
+function isUnsetEnvValue(value) {
+  const normalized = String(value || '').trim().toUpperCase();
+  return !normalized || normalized === 'CHANGE_ME' || normalized === 'CHANGEME' || normalized === 'TODO';
+}
+
+function readConfiguredEnvValue(key) {
+  const raw = process.env[key];
+  return isUnsetEnvValue(raw) ? '' : String(raw).trim();
+}
+
 const DEFAULT_ADMIN_USERNAME = 'mercedes133';
 const DEFAULT_ADMIN_PASSWORD = 'Dacosta133@';
-const ADMIN_USERNAME = process.env.ADMIN_USERNAME || (!IS_PRODUCTION ? DEFAULT_ADMIN_USERNAME : '');
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || (!IS_PRODUCTION ? DEFAULT_ADMIN_PASSWORD : '');
+const ADMIN_USERNAME = readConfiguredEnvValue('ADMIN_USERNAME') || (!IS_PRODUCTION ? DEFAULT_ADMIN_USERNAME : '');
+const ADMIN_PASSWORD = readConfiguredEnvValue('ADMIN_PASSWORD') || (!IS_PRODUCTION ? DEFAULT_ADMIN_PASSWORD : '');
 const ADMIN_CONFIGURED = Boolean(ADMIN_USERNAME && ADMIN_PASSWORD);
 const ADMIN_USING_DEFAULTS = ADMIN_USERNAME === DEFAULT_ADMIN_USERNAME && ADMIN_PASSWORD === DEFAULT_ADMIN_PASSWORD;
 
 // Paystack configuration — swap in your live keys when ready
-const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_SECRET_KEY || '';
-const PAYSTACK_PUBLIC_KEY = process.env.PAYSTACK_PUBLIC_KEY || '';
-const PAYSTACK_ENABLED = Boolean(PAYSTACK_SECRET_KEY && PAYSTACK_SECRET_KEY !== '');
+const PAYSTACK_SECRET_KEY = readConfiguredEnvValue('PAYSTACK_SECRET_KEY');
+const PAYSTACK_PUBLIC_KEY = readConfiguredEnvValue('PAYSTACK_PUBLIC_KEY');
+const PAYSTACK_ENABLED = Boolean(PAYSTACK_SECRET_KEY);
 
 const REFERRAL_TARGET = 7;
 const REFERRAL_BONUS_AMOUNT = 50;

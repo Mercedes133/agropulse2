@@ -7,5 +7,7 @@ public-tunnel.log
 public-tunnel-2.log
 data/
 *.db
+*.db-shm
+*.db-wal
 *.zip
 *.exe
