@@ -26,7 +26,8 @@
             </div>
             <div>
                 <label for="momo-number" class="block text-gray-700">Mobile Money Number</label>
-                <input type="tel" id="momo-number" name="momo-number" required pattern="[0-9]{10}" maxlength="10" class="mt-1 block w-full border border-gray-300 rounded px-3 py-2" placeholder="e.g. 024XXXXXXX">
+                <input type="tel" id="momo-number" name="momo-number" required pattern="233[0-9]{9}" maxlength="12" minlength="12" class="mt-1 block w-full border border-gray-300 rounded px-3 py-2" placeholder="e.g. 23324XXXXXXX">
+                <small class="text-gray-500">Enter your number in the format 233XXXXXXXXX</small>
             </div>
             <button type="submit" class="w-full bg-green-600 text-white py-2 rounded hover:bg-green-700">Deposit</button>
         </form>
@@ -47,8 +48,8 @@
             const plan = document.getElementById('plan-name').value;
             const network = document.getElementById('network').value;
             const momoNumber = document.getElementById('momo-number').value;
-            if (!network || !momoNumber.match(/^\d{10}$/)) {
-                alert('Please select a network and enter a valid 10-digit mobile money number.');
+            if (!network || !/^233\d{9}$/.test(momoNumber)) {
+                alert('Please select a network and enter a valid mobile money number in the format 233XXXXXXXXX.');
                 return;
             }
             // Simulate payment processing
