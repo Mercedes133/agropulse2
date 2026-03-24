@@ -15,6 +15,19 @@
                 <label for="amount" class="block text-gray-700">Deposit Amount</label>
                 <input type="number" id="amount" name="amount" required class="mt-1 block w-full border border-gray-300 rounded px-3 py-2" min="1">
             </div>
+            <div>
+                <label for="network" class="block text-gray-700">Mobile Network</label>
+                <select id="network" name="network" required class="mt-1 block w-full border border-gray-300 rounded px-3 py-2">
+                    <option value="">Select Network</option>
+                    <option value="MTN">MTN</option>
+                    <option value="Telecel">Telecel</option>
+                    <option value="AirtelTigo">AirtelTigo</option>
+                </select>
+            </div>
+            <div>
+                <label for="momo-number" class="block text-gray-700">Mobile Money Number</label>
+                <input type="tel" id="momo-number" name="momo-number" required pattern="[0-9]{10}" maxlength="10" class="mt-1 block w-full border border-gray-300 rounded px-3 py-2" placeholder="e.g. 024XXXXXXX">
+            </div>
             <button type="submit" class="w-full bg-green-600 text-white py-2 rounded hover:bg-green-700">Deposit</button>
         </form>
         <div id="confirmation" class="hidden mt-4 text-green-700 font-semibold"></div>
@@ -32,15 +45,23 @@
             e.preventDefault();
             const amount = document.getElementById('amount').value;
             const plan = document.getElementById('plan-name').value;
-            // Simulate deposit API call
-            // TODO: Replace with real API call
+            const network = document.getElementById('network').value;
+            const momoNumber = document.getElementById('momo-number').value;
+            if (!network || !momoNumber.match(/^\d{10}$/)) {
+                alert('Please select a network and enter a valid 10-digit mobile money number.');
+                return;
+            }
+            // Simulate payment processing
+            const confirmationDiv = document.getElementById('confirmation');
+            confirmationDiv.textContent = 'Processing payment...';
+            confirmationDiv.classList.remove('hidden');
             setTimeout(() => {
-                document.getElementById('confirmation').textContent = `Your investment in ${plan} has begun!`;
-                document.getElementById('confirmation').classList.remove('hidden');
+                // Simulate payment approval
+                confirmationDiv.textContent = `Payment received! Your investment in ${plan} has begun.`;
                 setTimeout(() => {
                     window.location.href = 'home.html';
                 }, 2000);
-            }, 1000);
+            }, 2000);
         });
     </script>
 </body>
