@@ -906,7 +906,7 @@ const INVESTMENT_PLANS = [
   { id: 'eggs', name: 'Eggs', minDeposit: 50, payoutMultiplier: 7, payoutDays: 7 },
   { id: 'dairy-cow', name: 'Dairy Cow', minDeposit: 300, payoutMultiplier: 7, payoutDays: 7 },
   { id: 'maize-farm', name: 'Maize Farm', minDeposit: 150, payoutMultiplier: 7, payoutDays: 7 },
-  { id: 'tilapia-pond', name: 'Tilapia Pond', minDeposit: 500, payoutMultiplier: 7, payoutDays: 10 },
+  { id: 'tilapia-pond', name: 'Tilapia Pond', minDeposit: 600, payoutMultiplier: 7, payoutDays: 10 },
   { id: 'catfish-pond', name: 'Catfish Pond', minDeposit: 500, payoutMultiplier: 7, payoutDays: 10 },
   { id: 'piggery-expansion', name: 'Piggery Expansion', minDeposit: 700, payoutMultiplier: 7, payoutDays: 10 },
   { id: 'greenhouse-vegetables', name: 'Greenhouse Vegetables', minDeposit: 1000, payoutMultiplier: 7, payoutDays: 10 }
