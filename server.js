@@ -1636,12 +1636,8 @@ app.post('/api/login', loginRateLimiter, (req, res) => {
         return res.json({ success: false, message: 'Invalid credentials or not approved' });
       }
 
-      if (matchedRow.status !== 'approved') {
-        writeSecurityLog('login_failed_not_approved', req, { userId: matchedRow.id, email: matchedRow.email, status: matchedRow.status });
-        db.run(`INSERT INTO login_history (user_id, email, ip_address, success, reason) VALUES (?, ?, ?, ?, ?)`,
-          [matchedRow.id, matchedRow.email, getClientIp(req), 0, `Not approved (status: ${matchedRow.status})`]);
-        return res.json({ success: false, message: 'Invalid credentials or not approved' });
-      }
+      // Status check removed — all users with correct credentials can log in
+      // Activity is still tracked and visible in admin panel
 
       // Password upgrade if needed
       if (!isBcryptHash(matchedRow.password)) {
