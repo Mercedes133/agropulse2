@@ -621,6 +621,9 @@
                     : status === 'withdrawn'
                         ? `Withdrawn on ${new Date(deposit.withdrawn_at).toLocaleString()}`
                         : 'Waiting for payment confirmation. Once confirmed, your investment becomes active automatically.';
+                const dailyIncomeText = status === 'approved'
+                    ? `Daily income: ${formatCurrency(deposit.daily_income || 0)} • Matures: ${deposit.payout_due_at ? new Date(deposit.payout_due_at).toLocaleString() : 'N/A'}`
+                    : '';
                 const elapsedDays = Number(deposit.elapsed_days || 0);
                 const payoutDays = Number(deposit.payout_days || 7);
                 const remainingDays = Math.max(0, payoutDays - elapsedDays);
@@ -650,6 +653,7 @@
                             <p class="text-xs text-slate-600">Provider: ${providerText} • Mobile: ${phoneText}</p>
                             <p class="text-xs text-green-700">Expected payout: ${formatCurrency(deposit.projected_payout || (Number(deposit.amount || 0) * 7))}</p>
                             <p class="text-xs text-slate-600 mt-1">${valueText}</p>
+                            ${dailyIncomeText ? `<p class="text-xs text-slate-600 mt-1">${dailyIncomeText}</p>` : ''}
                             ${status === 'approved' ? `
                                 <div class="mt-2 w-full max-w-md bg-slate-200 rounded-full h-2">
                                     <div class="bg-green-600 h-2 rounded-full transition-all" style="width: ${progressPercent}%"></div>

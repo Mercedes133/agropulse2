@@ -923,6 +923,20 @@ function calculatePlanPayout(amount, plan) {
   };
 }
 
+function getPayoutDueAt(approvedAt, payoutDays) {
+  if (!approvedAt) {
+    return null;
+  }
+
+  const approvedDate = new Date(approvedAt);
+  if (Number.isNaN(approvedDate.getTime())) {
+    return null;
+  }
+
+  const safePayoutDays = Math.max(1, Number(payoutDays || 1));
+  return new Date(approvedDate.getTime() + (safePayoutDays * 24 * 60 * 60 * 1000));
+}
+
 function getElapsedDays(fromDate) {
   if (!fromDate) {
     return 0;
@@ -938,32 +952,44 @@ function getElapsedDays(fromDate) {
 
 function calculateDepositProgress(amount, plan, approvedAt) {
   const principal = Math.round(Number(amount || 0) * 100) / 100;
-  const projectedPayout = Math.round((principal * Number(plan.payoutMultiplier || 1)) * 100) / 100;
+  const payoutMultiplier = Number(plan.payoutMultiplier || 1);
+  const payoutDays = Math.max(1, Number(plan.payoutDays || 1));
+  const projectedPayout = Math.round((principal * payoutMultiplier) * 100) / 100;
+  const dailyIncome = Math.round(((projectedPayout - principal) / payoutDays) * 100) / 100;
+  const dueAt = getPayoutDueAt(approvedAt, payoutDays);
+  const dueAtIso = dueAt ? dueAt.toISOString() : null;
 
   if (!approvedAt) {
     return {
       principal,
       projectedPayout,
+      dailyIncome,
       currentValue: principal,
       elapsedDays: 0,
       progressPercent: 0,
-      isMatured: false
+      isMatured: false,
+      payoutDueAt: dueAtIso,
+      remainingDays: payoutDays
     };
   }
 
-  const elapsedDays = Math.min(getElapsedDays(approvedAt), Number(plan.payoutDays || 0));
-  const payoutDays = Math.max(1, Number(plan.payoutDays || 1));
-  const growthPerDay = (Number(plan.payoutMultiplier || 1) - 1) / payoutDays;
+  const elapsedDays = Math.min(getElapsedDays(approvedAt), payoutDays);
+  const growthPerDay = (payoutMultiplier - 1) / payoutDays;
   const computedValue = principal * (1 + (growthPerDay * elapsedDays));
   const currentValue = Math.round(Math.min(projectedPayout, computedValue) * 100) / 100;
+  const isMatured = dueAt ? Date.now() >= dueAt.getTime() : elapsedDays >= payoutDays;
+  const remainingDays = Math.max(0, payoutDays - elapsedDays);
 
   return {
     principal,
     projectedPayout,
+    dailyIncome,
     currentValue,
     elapsedDays,
     progressPercent: Math.min(100, Math.round((elapsedDays / payoutDays) * 100)),
-    isMatured: elapsedDays >= payoutDays
+    isMatured,
+    payoutDueAt: dueAtIso,
+    remainingDays
   };
 }
 
@@ -2060,20 +2086,19 @@ app.get('/api/deposits', requireAuth, (req, res) => {
         }
 
         const progress = calculateDepositProgress(deposit.amount, plan, deposit.approved_at);
-        const payoutDueAt = deposit.approved_at
-          ? new Date(new Date(deposit.approved_at).getTime() + (plan.payoutDays * 24 * 60 * 60 * 1000)).toISOString()
-          : null;
 
         return {
           ...deposit,
           payout_multiplier: plan.payoutMultiplier,
           payout_days: plan.payoutDays,
           projected_payout: progress.projectedPayout,
+          daily_income: progress.dailyIncome,
           current_value: progress.currentValue,
           elapsed_days: progress.elapsedDays,
+          remaining_days: progress.remainingDays,
           progress_percent: progress.progressPercent,
           is_matured: progress.isMatured,
-          payout_due_at: payoutDueAt
+          payout_due_at: progress.payoutDueAt
         };
       });
 
@@ -2224,9 +2249,10 @@ app.post('/api/deposits/:id/withdraw', requireAuth, (req, res) => {
         return res.status(400).json({ success: false, message: 'Invalid plan for this deposit.' });
       }
 
-      const elapsedDays = getElapsedDays(deposit.approved_at);
-      if (elapsedDays < plan.payoutDays) {
-        const remainingDays = plan.payoutDays - elapsedDays;
+      const payoutDueAt = getPayoutDueAt(deposit.approved_at, plan.payoutDays);
+      if (!payoutDueAt || Date.now() < payoutDueAt.getTime()) {
+        const remainingMs = payoutDueAt ? Math.max(0, payoutDueAt.getTime() - Date.now()) : (plan.payoutDays * 24 * 60 * 60 * 1000);
+        const remainingDays = Math.max(1, Math.ceil(remainingMs / (24 * 60 * 60 * 1000)));
         return res.status(400).json({
           success: false,
           message: `Withdrawal is available after exactly ${plan.payoutDays} days. ${remainingDays} day(s) remaining.`
