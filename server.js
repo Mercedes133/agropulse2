@@ -117,25 +117,7 @@ app.post('/api/payment/verify', async (req, res) => {
     return res.status(500).json({ success: false, message: 'Verification failed.' });
   }
 });
-const express = require('express');
-const sqlite3 = require('sqlite3').verbose();
-const bodyParser = require('body-parser');
-const session = require('express-session');
-const SQLiteStore = require('connect-sqlite3')(session);
-const rateLimit = require('express-rate-limit');
-const bcrypt = require('bcryptjs');
-const helmet = require('helmet');
-const path = require('path');
-const crypto = require('crypto');
-const fs = require('fs');
-const nodemailer = require('nodemailer');
-
-const https = require('https');
-
-const app = express();
-const PORT = process.env.PORT || 3000;
-const DATABASE_PATH = process.env.DATABASE_PATH || './users.db';
-const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+// ...existing code...
 const SESSION_SECRET = process.env.SESSION_SECRET || (!IS_PRODUCTION ? 'agropluse_dev_secret_change_me' : '');
 const KNOWN_INSECURE_ADMIN_USERNAME = 'mercedes133';
 const KNOWN_INSECURE_ADMIN_PASSWORD = 'Dacosta133@';
