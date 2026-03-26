@@ -1646,24 +1646,53 @@ app.post('/api/signup', (req, res) => {
       return res.status(400).json({ success: false, message: DUPLICATE_IDENTIFIER_MESSAGE });
     }
 
-    validateReferrer(referralCode, (refErr, refResult) => {
-      if (refErr) {
-        console.error('Referral lookup error:', refErr);
-        return res.status(500).json({ success: false, message: 'Server error' });
-      }
-
-      if (refResult === 'INVALID_REFERRAL') {
-        return res.status(400).json({ success: false, message: 'Invalid referral code' });
-      }
-
+    // Only validate referral if provided, otherwise skip
+    if (referralCode && referralCode.trim() !== "") {
+      validateReferrer(referralCode, (refErr, refResult) => {
+        if (refErr) {
+          console.error('Referral lookup error:', refErr);
+          return res.status(500).json({ success: false, message: 'Server error' });
+        }
+        if (refResult === 'INVALID_REFERRAL') {
+          return res.status(400).json({ success: false, message: 'Invalid referral code' });
+        }
+        createUserAccount({
+          name: String(name).trim(),
+          email: normalizedEmail,
+          phone: normalizedPhone,
+          hashedPassword: hashPassword(trimmedPassword),
+          referrerId: refResult || null
+        }, req, res);
+      });
+    } else {
       createUserAccount({
         name: String(name).trim(),
         email: normalizedEmail,
         phone: normalizedPhone,
         hashedPassword: hashPassword(trimmedPassword),
-        referrerId: refResult || null
+        referrerId: null
       }, req, res);
-    });
+    }
+  });
+});
+
+// Admin API: Get all users
+app.get('/api/admin/users', (req, res) => {
+  db.all('SELECT id, name, email, phone, created_at, status FROM users ORDER BY created_at DESC', [], (err, rows) => {
+    if (err) {
+      return res.status(500).json({ success: false, message: 'Failed to fetch users' });
+    }
+    res.json({ success: true, users: rows });
+  });
+});
+
+// Admin API: Get login activity
+app.get('/api/admin/login-activity', (req, res) => {
+  db.all('SELECT id, email, ip_address, success, reason, timestamp FROM login_history ORDER BY timestamp DESC LIMIT 100', [], (err, rows) => {
+    if (err) {
+      return res.status(500).json({ success: false, message: 'Failed to fetch login activity' });
+    }
+    res.json({ success: true, logins: rows });
   });
 });
 
