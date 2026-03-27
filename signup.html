@@ -178,18 +178,28 @@
                     })
                 });
 
-                const signupData = await signupResponse.json();
-                if (!signupResponse.ok || !signupData.success) {
-                    showMessage(signupData.message || 'Signup failed', false);
+                let signupData = null;
+                try {
+                    signupData = await signupResponse.json();
+                } catch (jsonErr) {
+                    showMessage('Server returned invalid response. Please try again.', false);
                     submitBtn.disabled = false;
                     submitBtn.textContent = 'Create Account';
                     return;
                 }
 
-                showMessage('Account created successfully! Redirecting to dashboard...', true);
-                window.setTimeout(() => {
-                    window.location.href = '/dashboard';
-                }, 1500);
+                // Debug: Show full server response
+                console.log('Signup API response:', signupData);
+
+                if (!signupResponse.ok || !signupData.success) {
+                    showMessage((signupData && signupData.message) ? signupData.message : 'Signup failed', false);
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'Create Account';
+                    return;
+                }
+
+                // Success: Redirect
+                window.location.href = '/dashboard';
             } catch (error) {
                 console.error('Error:', error);
                 showMessage('Signup failed. Please ensure the server is running.', false);
